@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>__BRAND__ radio</title>
+<meta name="theme-color" content="#05070f">
+<meta name="robots" content="noindex">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="__BRAND__ radio">
+<link rel="icon" type="image/png" href="/img/__ICON__-logo-64.png">
+<link rel="apple-touch-icon" href="/img/__ICON__-logo-192.png">
+<style>
+@font-face { font-family: "Geist"; src: url("/fonts/geist.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+:root {
+  --bg: #05070f; --text: #eef1f7; --soft: rgba(238,241,247,.62); --dim: rgba(238,241,247,.4);
+  --line: rgba(255,255,255,.09); --glass: rgba(12,16,30,.55); --blue: #6ea4ff; --blue-2: #8cb8ff;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; min-height: 100%; }
+body {
+  background: var(--bg); color: var(--text);
+  font: 400 15px/1.5 "Geist", system-ui, sans-serif; letter-spacing: -.01em;
+  -webkit-font-smoothing: antialiased; overflow-x: hidden;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+button { font: inherit; color: inherit; }
+.bg { position: fixed; inset: 0; z-index: -2; background: url("/img/backdrop.jpg") center 75% / cover no-repeat; opacity: .32; }
+.bg-art { position: fixed; inset: -60px; z-index: -1; background-position: center; background-size: cover; filter: blur(60px) saturate(1.3); opacity: 0; transition: opacity 1.2s, background-image .6s; transform: scale(1.1); }
+.bg-art.on { opacity: .42; }
+.bg-shade { position: fixed; inset: 0; z-index: -1; background: radial-gradient(900px 500px at 50% -10%, rgba(110,164,255,.18), transparent 70%), linear-gradient(to bottom, rgba(5,7,15,.15), rgba(5,7,15,.85) 70%); }
+
+.top { display: flex; align-items: center; justify-content: space-between; max-width: 1080px; margin: 0 auto; padding: 18px 20px; }
+.brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: -.035em; color: inherit; text-decoration: none; }
+.brand img { width: 26px; height: 26px; border-radius: 50%; box-shadow: 0 0 18px rgba(110,164,255,.45); }
+.brand span { color: var(--dim); font-weight: 500; }
+.count { color: var(--dim); font-size: 13px; font-variant-numeric: tabular-nums; }
+
+main { max-width: 1080px; margin: 0 auto; padding: 6px 20px 60px; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); gap: 28px; align-items: start; }
+.glass { border-radius: 28px; border: 1px solid var(--line); background: var(--glass); backdrop-filter: blur(22px) saturate(1.2); -webkit-backdrop-filter: blur(22px) saturate(1.2); box-shadow: 0 30px 80px rgba(0,0,0,.45); }
+
+/* now playing */
+.now { position: sticky; top: 18px; padding: 18px; }
+.cover { position: relative; aspect-ratio: 16 / 9; border-radius: 20px; overflow: hidden; background: #0b1020; box-shadow: 0 24px 60px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.05); }
+.cover img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 8s ease-out; }
+.playing .cover img { transform: scale(1.06); }
+.cover .ph { position: absolute; inset: 0; display: grid; place-items: center; color: var(--dim); }
+.cover .ph svg { width: 54px; height: 54px; }
+.badge { position: absolute; left: 12px; top: 12px; display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 10px; border-radius: 999px; background: rgba(5,7,15,.72); backdrop-filter: blur(8px); font-size: 11.5px; font-weight: 700; letter-spacing: .06em; }
+.badge i { width: 7px; height: 7px; border-radius: 50%; background: #ff4d5e; box-shadow: 0 0 10px #ff4d5e; animation: pulse 1.6s ease-in-out infinite; }
+.badge.vod i { background: var(--blue); box-shadow: 0 0 10px var(--blue); animation: none; }
+@keyframes pulse { 50% { opacity: .35; } }
+
+.info { padding: 20px 6px 4px; }
+.info h1 { margin: 0; font-size: clamp(21px, 2.6vw, 27px); font-weight: 650; letter-spacing: -.035em; line-height: 1.2; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.info p { margin: 6px 0 0; color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.status { display: flex; align-items: center; gap: 10px; height: 22px; margin: 16px 6px 0; color: var(--soft); font-size: 13px; }
+.eq { display: inline-flex; align-items: flex-end; gap: 3px; height: 16px; }
+.eq span { width: 3px; height: 4px; border-radius: 2px; background: var(--blue); }
+.playing .eq span { animation: eq 1s ease-in-out infinite; }
+.eq span:nth-child(2) { animation-delay: -.3s !important; } .eq span:nth-child(3) { animation-delay: -.6s !important; } .eq span:nth-child(4) { animation-delay: -.15s !important; } .eq span:nth-child(5) { animation-delay: -.45s !important; }
+@keyframes eq { 0%, 100% { height: 4px; } 30% { height: 16px; } 60% { height: 8px; } }
+.spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(110,164,255,.25); border-top-color: var(--blue); animation: spin .8s linear infinite; display: none; }
+.loading .spin { display: inline-block; } .loading .eq { display: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.controls { display: flex; align-items: center; justify-content: center; gap: 22px; margin: 18px 0 8px; }
+.ctl { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 50%; border: 0; background: rgba(255,255,255,.06); cursor: pointer; transition: background .15s, transform .15s; }
+.ctl:hover { background: rgba(255,255,255,.11); }
+.ctl:active { transform: scale(.94); }
+.ctl svg { width: 22px; height: 22px; }
+.play { width: 78px; height: 78px; background: var(--blue); color: #050b1a; box-shadow: 0 0 0 0 rgba(110,164,255,.5), 0 14px 40px rgba(110,164,255,.35); }
+.play:hover { background: var(--blue-2); }
+.play svg { width: 30px; height: 30px; }
+.playing .play { animation: ring 2.4s ease-out infinite; }
+@keyframes ring { 0% { box-shadow: 0 0 0 0 rgba(110,164,255,.45), 0 14px 40px rgba(110,164,255,.35); } 100% { box-shadow: 0 0 0 26px rgba(110,164,255,0), 0 14px 40px rgba(110,164,255,.35); } }
+
+.extras { display: flex; align-items: center; gap: 12px; margin: 14px 6px 4px; }
+.vol { flex: 1; display: flex; align-items: center; gap: 10px; color: var(--dim); }
+.vol svg { width: 18px; height: 18px; flex: none; }
+input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; border-radius: 4px; background: linear-gradient(to right, var(--blue) var(--v, 80%), rgba(255,255,255,.14) var(--v, 80%)); outline: none; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.4); cursor: pointer; }
+input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border: 0; border-radius: 50%; background: #fff; cursor: pointer; }
+.pill-btn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 13px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255,255,255,.04); color: var(--soft); font-size: 13px; cursor: pointer; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pill-btn:hover { color: var(--text); background: rgba(255,255,255,.08); }
+.pill-btn.on { color: #050b1a; background: var(--blue); border-color: transparent; }
+.pill-btn svg { width: 15px; height: 15px; }
+
+/* stations */
+.list { padding: 10px; }
+.list-head { display: flex; align-items: baseline; justify-content: space-between; padding: 10px 12px 12px; }
+.list-head h2 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -.02em; }
+.st { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; gap: 14px; align-items: center; width: 100%; padding: 8px; border: 0; border-radius: 18px; background: none; text-align: left; cursor: pointer; transition: background .15s; }
+.st:hover { background: rgba(255,255,255,.05); }
+.st.cur { background: rgba(110,164,255,.12); box-shadow: inset 0 0 0 1px rgba(110,164,255,.3); }
+.st-art { position: relative; aspect-ratio: 16 / 9; border-radius: 11px; overflow: hidden; background: #0b1020; }
+.st-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.st-art .ph { position: absolute; inset: 0; display: grid; place-items: center; color: var(--dim); }
+.st-art .ph svg { width: 20px; height: 20px; }
+.st b { display: block; font-weight: 550; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st small { display: block; color: var(--dim); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st .tag { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; color: #ff8c97; }
+.st .tag.vod { color: var(--dim); }
+.st .mini-eq { display: none; }
+.st.cur.live-now .mini-eq { display: inline-flex; }
+.st .mini-eq span { width: 3px; height: 4px; margin-left: 2px; border-radius: 2px; background: var(--blue); animation: eq 1s ease-in-out infinite; }
+.st .mini-eq span:nth-child(2) { animation-delay: -.4s; } .st .mini-eq span:nth-child(3) { animation-delay: -.7s; }
+.mini-eq { align-items: flex-end; height: 14px; }
+
+.empty, .gone { padding: 70px 24px; text-align: center; color: var(--soft); }
+.empty b, .gone b { display: block; margin-bottom: 6px; color: var(--text); font-size: 20px; letter-spacing: -.03em; }
+.gone { grid-column: 1 / -1; }
+.hint { margin: 14px 6px 0; color: var(--dim); font-size: 12.5px; text-align: center; }
+
+@media (max-width: 860px) {
+  main { grid-template-columns: 1fr; gap: 18px; }
+  .now { position: static; }
+}
+@media (max-width: 520px) {
+  .top { padding: 14px 16px; }
+  main { padding: 4px 12px 40px; }
+  .now { padding: 12px; border-radius: 24px; }
+  .cover { border-radius: 16px; }
+  .controls { gap: 18px; }
+  .st { grid-template-columns: 78px minmax(0, 1fr) auto; gap: 12px; }
+  .vol { display: none; }
+  .extras { justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="bg"></div>
+<div class="bg-art" id="bg-art"></div>
+<div class="bg-shade"></div>
+
+<header class="top">
+  <a class="brand" href="/">__BRAND__ <span>radio</span></a>
+  <span class="count" id="count"></span>
+</header>
+
+<main id="app">
+  <section class="now glass" id="now" hidden>
+    <div class="cover" id="cover"></div>
+    <div class="info"><h1 id="title"></h1><p id="channel"></p></div>
+    <div class="status"><span class="spin"></span><span class="eq"><span></span><span></span><span></span><span></span><span></span></span><span id="status">Tap play</span></div>
+    <div class="controls">
+      <button class="ctl" id="prev" aria-label="Previous station"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 6.2v11.6a1 1 0 0 1-1.5.86L9.6 13.3a1.5 1.5 0 0 1 0-2.6l8.9-5.36A1 1 0 0 1 20 6.2Z"/></svg></button>
+      <button class="ctl play" id="play" aria-label="Play"></button>
+      <button class="ctl" id="next" aria-label="Next station"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 6.2v11.6a1 1 0 0 0 1.5.86l8.9-5.36a1.5 1.5 0 0 0 0-2.6L5.5 5.34A1 1 0 0 0 4 6.2Z"/></svg></button>
+    </div>
+    <div class="extras">
+      <label class="vol" id="vol-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg><input type="range" id="vol" min="0" max="1" step="0.01" value="0.8" aria-label="Volume"></label>
+      <button class="pill-btn" id="sleep" title="Stop playing after a while"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg><span id="sleep-l">Sleep timer</span></button>
+    </div>
+    <p class="hint">Keeps playing when you lock your phone or switch apps.</p>
+  </section>
+
+  <section class="list glass" id="list" hidden>
+    <div class="list-head"><h2>Stations</h2><span class="count" id="list-n"></span></div>
+    <div id="stations"></div>
+  </section>
+</main>
+
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const KEY = (location.pathname.match(/^\/radio\/([A-Za-z0-9_-]{16})/) || [])[1];
+const BASE = `/radio/${KEY}`;
+const I = {
+  play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72a1 1 0 0 0 1.52.85l11.1-6.86a1 1 0 0 0 0-1.7L9.52 4.29A1 1 0 0 0 8 5.14Z"/></svg>',
+  pause: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4.5" width="4" height="15" rx="1.3"/><rect x="14" y="4.5" width="4" height="15" rx="1.3"/></svg>',
+  music: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>',
+};
+const store = {
+  get(k) { try { return localStorage.getItem(`radio:${k}`); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(`radio:${k}`, v); } catch {} },
+};
+
+const audio = new Audio();
+audio.preload = "none";
+const S = { stations: [], cur: null, want: false, retries: 0, retryTimer: 0, sleepAt: 0, sleepIdx: 0, lastList: "" };
+
+function setState(st, text) {
+  const now = $("#now");
+  now.classList.toggle("playing", st === "playing");
+  now.classList.toggle("loading", st === "loading");
+  $("#play").innerHTML = st === "playing" || st === "loading" ? I.pause : I.play;
+  $("#play").setAttribute("aria-label", st === "playing" || st === "loading" ? "Pause" : "Play");
+  $("#status").textContent = text;
+  if ("mediaSession" in navigator) navigator.mediaSession.playbackState = st === "paused" ? "paused" : "playing";
+  renderList();
+}
+
+function art(st) { return st && st.thumb ? `${BASE}/${st.id}.jpg` : ""; }
+
+function show(st) {
+  S.cur = st;
+  store.set(`last:${KEY}`, st.id);
+  const a = art(st);
+  $("#cover").innerHTML = (a ? `<img src="${a}" alt="">` : `<span class="ph">${I.music}</span>`)
+    + `<span class="badge${st.live ? "" : " vod"}"><i></i>${st.live ? "LIVE" : "ON REPEAT"}</span>`;
+  $("#title").textContent = st.title;
+  $("#channel").textContent = st.channel || (st.live ? "Livestream" : "Video");
+  const bg = $("#bg-art");
+  bg.style.backgroundImage = a ? `url("${a}")` : "";
+  bg.classList.toggle("on", !!a);
+  document.title = `${st.title} · __BRAND__ radio`;
+  if ("mediaSession" in navigator) {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: st.title, artist: st.channel || "__BRAND__ radio", album: "__BRAND__ radio",
+      artwork: a ? [{ src: new URL(a, location.href).href, sizes: "1280x720", type: "image/jpeg" }] : [{ src: "/img/__ICON__-logo-192.png", sizes: "192x192", type: "image/png" }],
+    });
+  }
+  renderList();
+}
+
+function start() {
+  if (!S.cur) return;
+  S.want = true;
+  S.pending = false;
+  S.lastT = 0;
+  S.lastMove = Date.now();
+  clearTimeout(S.retryTimer);
+  setState("loading", S.retries ? "Reconnecting…" : "Tuning in…");
+  audio.src = `${BASE}/${S.cur.id}.mp3?t=${Date.now()}`;
+  audio.play().catch((e) => {
+    if (e && e.name === "NotAllowedError") { S.want = false; setState("paused", "Tap play"); }
+  });
+}
+// A live stream can't really pause: drop the connection and rejoin live later.
+function stop(text = "Paused") {
+  S.want = false;
+  S.pending = false;
+  clearTimeout(S.retryTimer);
+  audio.pause();
+  audio.removeAttribute("src");
+  audio.load();
+  setState("paused", text);
+}
+function toggle() { S.want ? stop() : (S.retries = 0, start()); }
+function step(d) {
+  if (!S.stations.length) return;
+  const i = Math.max(0, S.stations.findIndex((s) => s.id === S.cur?.id));
+  show(S.stations[(i + d + S.stations.length) % S.stations.length]);
+  S.retries = 0;
+  start();
+}
+function pick(id) {
+  const st = S.stations.find((s) => s.id === id);
+  if (!st) return;
+  if (S.cur?.id === id) return toggle();
+  show(st);
+  S.retries = 0;
+  start();
+}
+
+audio.addEventListener("playing", () => { S.retries = 0; setState("playing", S.cur?.live ? "Live now" : "Playing"); });
+audio.addEventListener("waiting", () => { if (S.want) setState("loading", "Buffering…"); });
+function dropped() {
+  if (!S.want || S.pending) return;
+  if (S.retries >= 6) { stop("Couldn't connect. Tap play to try again."); return; }
+  S.retries++;
+  S.pending = true;
+  setState("loading", "Reconnecting…");
+  S.retryTimer = setTimeout(start, Math.min(8000, 1200 * S.retries));
+}
+audio.addEventListener("error", dropped);
+audio.addEventListener("ended", dropped);
+// Rejoin only when playback has really stopped moving. Short hiccups on a phone
+// connection are covered by the buffer; reconnecting for them caused audible cuts.
+audio.addEventListener("timeupdate", () => {
+  if (audio.currentTime !== S.lastT) { S.lastT = audio.currentTime; S.lastMove = Date.now(); }
+});
+// With the screen locked the browser pauses scripts, so only judge while visible.
+document.addEventListener("visibilitychange", () => { S.lastMove = Date.now(); });
+setInterval(() => {
+  if (!S.want || S.pending || document.hidden) return;
+  if (Date.now() - S.lastMove > (S.lastT ? 15000 : 30000)) dropped();
+}, 3000);
+
+if ("mediaSession" in navigator) {
+  const ms = navigator.mediaSession;
+  const set = (a, fn) => { try { ms.setActionHandler(a, fn); } catch {} };
+  set("play", () => { S.retries = 0; start(); });
+  set("pause", () => stop());
+  set("stop", () => stop());
+  set("previoustrack", () => step(-1));
+  set("nexttrack", () => step(1));
+}
+
+$("#play").addEventListener("click", toggle);
+$("#prev").addEventListener("click", () => step(-1));
+$("#next").addEventListener("click", () => step(1));
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT") return;
+  if (e.code === "Space") { e.preventDefault(); toggle(); }
+  else if (e.key === "ArrowRight") step(1);
+  else if (e.key === "ArrowLeft") step(-1);
+});
+
+// Volume (iOS ignores it, so the slider is hidden there).
+const vol = $("#vol");
+const savedVol = parseFloat(store.get("vol"));
+if (!isNaN(savedVol)) vol.value = savedVol;
+const applyVol = () => { audio.volume = +vol.value; vol.style.setProperty("--v", `${vol.value * 100}%`); store.set("vol", vol.value); };
+vol.addEventListener("input", applyVol);
+applyVol();
+audio.volume = 0.5;
+if (audio.volume !== 0.5) $("#vol-wrap").style.display = "none";
+applyVol();
+
+// Sleep timer: off → 15 → 30 → 60 → 90 min.
+const SLEEP = [0, 15, 30, 60, 90];
+$("#sleep").addEventListener("click", () => {
+  S.sleepIdx = (S.sleepIdx + 1) % SLEEP.length;
+  S.sleepAt = SLEEP[S.sleepIdx] ? Date.now() + SLEEP[S.sleepIdx] * 60e3 : 0;
+  tickSleep();
+});
+function tickSleep() {
+  const b = $("#sleep");
+  if (!S.sleepAt) { b.classList.remove("on"); $("#sleep-l").textContent = "Sleep timer"; return; }
+  const left = S.sleepAt - Date.now();
+  if (left <= 0) { S.sleepAt = 0; S.sleepIdx = 0; stop("Sleep timer ended"); tickSleep(); return; }
+  b.classList.add("on");
+  const m = Math.floor(left / 60e3), s = Math.floor(left / 1000) % 60;
+  $("#sleep-l").textContent = `${m}:${String(s).padStart(2, "0")}`;
+}
+setInterval(tickSleep, 1000);
+
+function renderList() {
+  const html = S.stations.map((st) => {
+    const a = art(st);
+    const cur = S.cur?.id === st.id;
+    return `<button class="st${cur ? " cur" : ""}${cur && S.want ? " live-now" : ""}" data-id="${esc(st.id)}">
+      <span class="st-art">${a ? `<img src="${a}" alt="" loading="lazy">` : `<span class="ph">${I.music}</span>`}</span>
+      <span style="min-width: 0"><b>${esc(st.title)}</b><small>${st.live ? `<span class="tag">LIVE</span> · ` : `<span class="tag vod">REPEAT</span> · `}${esc(st.channel || "")}${st.listeners ? ` · ${st.listeners} listening` : ""}</small></span>
+      <span class="mini-eq"><span></span><span></span><span></span></span>
+    </button>`;
+  }).join("");
+  if (html !== S.lastList) { $("#stations").innerHTML = html; S.lastList = html; }
+}
+$("#stations").addEventListener("click", (e) => { const b = e.target.closest("[data-id]"); if (b) pick(b.dataset.id); });
+
+async function load(first) {
+  if (S.dead) return;
+  let d;
+  try {
+    const r = await fetch(`${BASE}/stations.json`, { cache: "no-store" });
+    if (r.status === 404) return gone();
+    d = await r.json();
+  } catch { return; }
+  S.stations = d.stations || [];
+  const n = S.stations.reduce((t, s) => t + (s.listeners || 0), 0);
+  $("#count").textContent = n ? `${n} listening` : "";
+  $("#list-n").textContent = S.stations.length ? `${S.stations.length}` : "";
+  if (!S.stations.length) {
+    S.empty = true;
+    $("#app").innerHTML = `<div class="gone glass"><b>No stations yet</b>Add a YouTube link in the admin panel and it shows up here.</div>`;
+    return;
+  }
+  if (S.empty) return location.reload();
+  $("#now").hidden = false;
+  $("#list").hidden = false;
+  if (first) {
+    const want = location.hash.slice(1) || store.get(`last:${KEY}`);
+    show(S.stations.find((s) => s.id === want) || S.stations[0]);
+    setState("paused", "Tap play");
+  } else if (S.cur && !S.stations.some((s) => s.id === S.cur.id)) {
+    stop("This station was removed");
+    show(S.stations[0]);
+  } else if (S.cur) {
+    S.cur = S.stations.find((s) => s.id === S.cur.id);
+  }
+  renderList();
+}
+function gone() {
+  if (S.dead) return;
+  if ($("#now")) stop();
+  S.dead = true;
+  $("#app").innerHTML = `<div class="gone glass"><b>This radio link doesn't work anymore</b>Ask for the new link.</div>`;
+}
+window.addEventListener("hashchange", () => { const id = location.hash.slice(1); if (id && id !== S.cur?.id) pick(id); });
+
+$("#play").innerHTML = I.play;
+if (!KEY) gone(); else { load(true); setInterval(() => { if (!document.hidden) load(false); }, 15000); }
+// offline page when the laptop is off (works after one visit while it was on)
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
+</script>
+</body>
+</html>

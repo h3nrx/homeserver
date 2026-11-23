@@ -1,0 +1,35 @@
+[Unit]
+Description=Discord bot %i
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=__USER__
+Group=__USER__
+WorkingDirectory=__HOME__/bots/%i
+EnvironmentFile=-__HOME__/bots/%i/.env
+Environment=PYTHONUNBUFFERED=1
+ExecStartPre=__HOME__/panel-agent/bot-prep.sh %i
+ExecStart=__HOME__/panel-agent/bot-run.sh %i
+Restart=on-failure
+RestartSec=10
+# First start may install dependencies with pip.
+TimeoutStartSec=600
+TimeoutStopSec=15
+StandardOutput=append:__HOME__/bots/%i/bot.log
+StandardError=append:__HOME__/bots/%i/bot.log
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+MemoryMax=512M
+CPUQuota=100%
+
+[Install]
+WantedBy=multi-user.target

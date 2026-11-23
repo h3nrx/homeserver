@@ -1,0 +1,7 @@
+.env
+*.env
+panel-data/
+auth.json
+*.local
+.DS_Store
+Thumbs.db

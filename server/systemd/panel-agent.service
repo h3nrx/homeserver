@@ -1,0 +1,21 @@
+[Unit]
+Description=Panel Agent (host-side helper for admin panel)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 __HOME__/panel-agent/agent.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

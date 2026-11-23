@@ -1,0 +1,49 @@
+services:
+  minecraft:
+    image: itzg/minecraft-server:stable-java25
+    container_name: minecraft
+    restart: "no"
+    stop_grace_period: 90s
+    entrypoint: ["/bin/bash", "/boot.sh"]
+    tty: true
+    stdin_open: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETUID
+      - SETGID
+    ports:
+      # Im Heimnetz direkt erreichbar. Der Router leitet den Port nicht weiter;
+      # von aussen kommen Spieler ueber den Tunnel.
+      - "0.0.0.0:25565:25565"
+    environment:
+      EULA: "TRUE"
+      TYPE: "PAPER"
+      VERSION: "26.3"
+      MEMORY: "__MC_MEMORY__"
+      USE_AIKAR_FLAGS: "TRUE"
+      TZ: "Europe/Berlin"
+      MOTD: "__BRAND__ server"
+      ONLINE_MODE: "TRUE"
+      ENABLE_WHITELIST: "TRUE"
+      ENFORCE_WHITELIST: "TRUE"
+      MAX_PLAYERS: "10"
+      VIEW_DISTANCE: "10"
+      SIMULATION_DISTANCE: "8"
+      DIFFICULTY: "normal"
+      RCON_PASSWORD: "${RCON_PASSWORD}"
+    volumes:
+      - ./data:/data
+      - ./boot.sh:/boot.sh:ro
+      - ./control:/control
+    networks:
+      - mcnet
+
+networks:
+  mcnet:
+    name: mcnet

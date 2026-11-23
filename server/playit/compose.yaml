@@ -1,0 +1,20 @@
+services:
+  playit:
+    image: ghcr.io/playit-cloud/playit-agent:1.0
+    container_name: playit
+    restart: unless-stopped
+    # Host-Netzwerk, damit der Agent 127.0.0.1:25565 erreicht.
+    network_mode: host
+    env_file:
+      - .env
+    # Abgeschottet: keine Sonderrechte, nur Lesezugriff aufs eigene Dateisystem.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run
+    mem_limit: 256m
+    pids_limit: 128
