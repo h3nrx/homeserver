@@ -1059,7 +1059,7 @@ async function doImport() {
       await fsp.mkdir(dir, { mode: 0o755 });
       try { await fsp.link(src, path.join(dir, name)); }
       catch { try { await fsp.copyFile(src, path.join(dir, name)); } catch { await fsp.rm(dir, { recursive: true, force: true }); continue; } }
-      await withIndex(async (idx, save) => { idx[id] = { name, size, uploaded: Date.now(), folder, from: kind }; await save(); });
+      await withIndex(async (idx, save) => { idx[id] = { name, size, uploaded: Date.now(), folder, from: kind, shared: false }; await save(); });
       st.jobs[j.id] = Date.now();
       changed = true;
     }
@@ -1123,7 +1123,7 @@ async function keyUpload(req, res, url) {
   try { size = await streamTo(req, path.join(dir, name), MAX_UPLOAD_BYTES); }
   catch (e) { await fsp.rm(dir, { recursive: true, force: true }); throw e; }
   if (!size) { await fsp.rm(dir, { recursive: true, force: true }); fail(400, "The file was empty."); }
-  await withIndex(async (idx, save) => { idx[id] = { name, size, uploaded: Date.now(), folder: "sys-uploads", from: "key" }; await save(); });
+  await withIndex(async (idx, save) => { idx[id] = { name, size, uploaded: Date.now(), folder: "sys-uploads", from: "key", shared: true }; await save(); });
   key.used = Date.now(); key.uses = (key.uses || 0) + 1;
   await writeKeys(keys).catch(() => {});
   const link = `https://${req.headers.host}/f/${id}/${encodeURIComponent(name)}`;
@@ -1136,7 +1136,7 @@ async function fileRoutes(req, res, p, m, url) {
     await importJobs();
     const [{ files, folders }, lim] = await Promise.all([
       withIndex((idx, _s, folders) => ({
-        files: Object.entries(idx).map(([id, e]) => ({ id, ...e })).sort((a, b) => (b.uploaded || 0) - (a.uploaded || 0)),
+        files: Object.entries(idx).map(([id, e]) => ({ id, ...e, shared: isShared(e) })).sort((a, b) => (b.uploaded || 0) - (a.uploaded || 0)),
         folders: Object.entries(allFolders(folders)).map(([id, f]) => ({ id, ...f })),
       })),
       storageLimit(),
@@ -1160,7 +1160,7 @@ async function fileRoutes(req, res, p, m, url) {
     await withIndex(async (idx, save, folders) => {
       // the folder may have been deleted while the upload ran
       const folder = want && allFolders(folders)[want] ? want : null;
-      idx[id] = { name, size, uploaded: Date.now(), folder };
+      idx[id] = { name, size, uploaded: Date.now(), folder, shared: false };
       await save();
     });
     return send(res, 200, { ok: true, id, name, size, link: `/f/${id}/${encodeURIComponent(name)}` });
@@ -1291,6 +1291,16 @@ async function fileRoutes(req, res, p, m, url) {
   }
 
   /* single file: rename / delete */
+  const sh = p.match(/^\/api\/files\/([A-Za-z0-9_-]{12})\/share$/);
+  if (sh && m === "POST") {
+    const on = !!(await readJson(req)).shared;
+    return send(res, 200, await withIndex(async (idx, save) => {
+      const e = idx[sh[1]];
+      if (!e) fail(404, "File not found.");
+      if (isShared(e) !== on || e.shared === undefined) { e.shared = on; await save(); }
+      return { ok: true, shared: on, link: `/f/${sh[1]}/${encodeURIComponent(e.name)}` };
+    }));
+  }
   const one = p.match(/^\/api\/files\/([^/]+)$/);
   if (one && m === "PATCH") {
     const id = one[1];
@@ -2066,6 +2076,27 @@ document.getElementById("wrap").addEventListener("click", () => document.querySe
 </html>`;
 }
 
+/* ========================== File Host: sharing ========================== */
+// A file is public under /f/<id>/<name> only while it's shared. Files from
+// before sharing existed have no flag and count as shared, so links that were
+// already sent around keep working. nginx asks /api/fileaccess on every /f/
+// request; signed-in visitors always get through.
+const isShared = (e) => !!e && e.shared !== false;
+let idxCache = { m: -1, z: -1, idx: {} };
+async function fileEntry(id) {
+  try {
+    const st = await fsp.stat(FILES_INDEX);
+    if (st.mtimeMs !== idxCache.m || st.size !== idxCache.z) {
+      idxCache = { m: st.mtimeMs, z: st.size, idx: JSON.parse(await fsp.readFile(FILES_INDEX, "utf8")) };
+    }
+    return idxCache.idx[id] || null;
+  } catch { return null; }
+}
+async function canSeeFile(req, id) {
+  const e = await fileEntry(id);
+  return !!e && (isShared(e) || isAuthed(req));
+}
+
 /* ========================== File Host: preview page ========================== */
 // When a share link /f/<id>/<name> is opened in a browser tab, nginx sends it
 // here: the file is shown first, with a download button. Embeds, Discord,
@@ -2097,7 +2128,7 @@ async function filePage(req, res, id, rawName) {
   if (name && !/[\/\\]/.test(name) && name !== "." && name !== "..") {
     try { st = await fsp.stat(path.join(FILES_DIR, id, name)); } catch {}
   }
-  if (!st || !st.isFile()) return html(404, FILE_HTML({ t, lang, missing: true }));
+  if (!st || !st.isFile() || !(await canSeeFile(req, id))) return html(404, FILE_HTML({ t, lang, missing: true }));
   let info = null;
   try { info = (JSON.parse(await fsp.readFile(FILES_INDEX, "utf8")))[id] || null; } catch {}
   const kind = Object.keys(FP_EXT).find((k) => FP_EXT[k].test(name)) || "other";
@@ -2122,12 +2153,10 @@ async function filePreview(id, name) {
     return { state: String(d.state || "error"), pages: +d.pages || 0, total: +d.total || 0, sig: String(d.sig || "") };
   } catch { return { state: "error" }; }
 }
-async function filePreviewRoute(res, id) {
-  let info = null;
-  try { info = (JSON.parse(await fsp.readFile(FILES_INDEX, "utf8")))[id] || null; } catch {}
-  if (!info || !info.name) return send(res, 404, { error: "File not found." });
-  const pv = await filePreview(id, info.name);
-  return send(res, 200, { state: pv.state });
+async function filePreviewRoute(req, res, id) {
+  const info = await fileEntry(id);
+  if (!info || !info.name || !(isShared(info) || isAuthed(req))) return send(res, 404, { error: "File not found." });
+  return send(res, 200, await filePreview(id, info.name));
 }
 function FILE_HTML({ t, lang, id, name, size, when, kind, text, cut, pv, origin, missing }) {
   const src = missing ? "" : `/f/${id}/${encodeURIComponent(name)}`;
@@ -2771,7 +2800,12 @@ async function route(req, res) {
   { const c = p.match(/^\/c\/([^/]+)$/); if (c && (m === "GET" || m === "HEAD")) return clipPage(req, res, c[1]); }
   { const c = p.match(/^\/p\/([A-Za-z0-9_-]{10})(\/raw)?$/); if (c && (m === "GET" || m === "HEAD")) return pastePage(req, res, c[1], !!c[2]); }
   { const c = p.match(/^\/f\/([A-Za-z0-9_-]{12})\/([^/]+)$/); if (c && (m === "GET" || m === "HEAD")) return filePage(req, res, c[1], c[2]); }
-  { const c = p.match(/^\/api\/fpreview\/([A-Za-z0-9_-]{12})$/); if (c && m === "GET") return filePreviewRoute(res, c[1]); }
+  { const c = p.match(/^\/api\/fpreview\/([A-Za-z0-9_-]{12})$/); if (c && m === "GET") return filePreviewRoute(req, res, c[1]); }
+  if (p === "/api/fileaccess" && m === "GET") {
+    const id = (/^\/f\/([A-Za-z0-9_-]{12})\//.exec(String(req.headers["x-original-uri"] || "")) || [])[1];
+    res.writeHead(id && (await canSeeFile(req, id)) ? 204 : 403, { "Cache-Control": "no-store" });
+    return res.end();
+  }
   if (p === "/api/session" && m === "GET") return send(res, 200, { authed: isAuthed(req) });
   // Progress only (no details), so the update screen can follow along while
   // the panel restarts and the old session is gone.

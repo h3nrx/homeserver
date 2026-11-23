@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.0
+
+Dateien sind privat, Links gibt's nur auf Wunsch.
+
+- Neue Dateien im File Host sind privat. Ohne Anmeldung kommt niemand dran.
+- „Link erstellen“ macht eine Datei teilbar und kopiert den Link. „Nicht mehr teilen“ macht sie wieder privat, der Link geht dann nicht mehr.
+- Geteilte Dateien sind in der Liste mit „geteilt“ markiert.
+- Antippen öffnet die Datei direkt im File Explorer: Bilder, Videos, Musik, Textdateien sowie PowerPoint, Word, Excel und PDF. Mit den Pfeilen geht's zur nächsten Datei.
+- Dateien von vor diesem Update bleiben geteilt, damit schon verschickte Links weiter funktionieren. Bei Bedarf einfach „Nicht mehr teilen“ drücken.
+- Uploads per iPhone-Kurzbefehl bekommen weiterhin sofort einen Link.
+
 ## 1.1.2
 
 Vorschau für PowerPoint, Word, Excel und PDF.
