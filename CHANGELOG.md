@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.1
+
+Fix für Uploads vom iPhone.
+
+- Fotos und Videos vom iPhone-Kurzbefehl kamen ohne Dateiendung an (z. B. „IMG_1234“) und ließen sich weder ansehen noch richtig herunterladen. Jetzt erkennt der Server, was es wirklich ist, und hängt .jpg, .heic, .mov, .mp4 usw. an.
+- Schon hochgeladene Dateien ohne Endung werden beim Öffnen vom File Host automatisch repariert.
+- iPhone-Fotos im HEIC-Format bekommen jetzt eine Vorschau, auch am PC.
+- Ist im Kurzbefehl beim Haupttext „Formular“ oder „JSON“ eingestellt statt „Datei“, kommt jetzt eine klare Fehlermeldung.
+
 ## 1.2.0
 
 Dateien sind privat, Links gibt's nur auf Wunsch.

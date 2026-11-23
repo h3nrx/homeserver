@@ -1092,6 +1092,63 @@ async function writeKeys(keys) {
 const TYPE_EXT = { "image/jpeg": "jpg", "image/png": "png", "image/heic": "heic", "image/heif": "heif", "image/gif": "gif", "image/webp": "webp",
   "video/mp4": "mp4", "video/quicktime": "mov", "audio/mpeg": "mp3", "audio/mp4": "m4a", "audio/x-m4a": "m4a", "audio/wav": "wav", "audio/x-wav": "wav",
   "application/pdf": "pdf", "application/zip": "zip", "text/plain": "txt", "application/json": "json", "text/csv": "csv" };
+// What a file really is, from its first bytes. Used when a name has no
+// extension (iPhone photos arrive as "IMG_1234").
+const HAS_EXT = /\.[A-Za-z0-9]{1,8}$/;
+async function sniffExt(file) {
+  let b;
+  const fh = await fsp.open(file, "r");
+  try { b = Buffer.alloc(4096); const { bytesRead } = await fh.read(b, 0, 4096, 0); b = b.subarray(0, bytesRead); }
+  finally { await fh.close(); }
+  const at = (o, str) => b.length >= o + str.length && b.toString("latin1", o, o + str.length) === str;
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return "jpg";
+  if (at(0, "\x89PNG")) return "png";
+  if (at(0, "GIF8")) return "gif";
+  if (at(0, "%PDF")) return "pdf";
+  if (at(0, "RIFF")) return at(8, "WEBP") ? "webp" : at(8, "WAVE") ? "wav" : at(8, "AVI ") ? "avi" : "";
+  if (at(4, "ftyp")) {
+    const brand = b.toString("latin1", 8, 12);
+    if (/^(heic|heix|hevc|hevx|heim|heis|mif1|msf1)$/.test(brand)) return "heic";
+    if (brand === "avif") return "avif";
+    if (brand === "qt  ") return "mov";
+    if (/^M4[AB] $/.test(brand)) return "m4a";
+    return "mp4";
+  }
+  if (at(0, "PK\x03\x04")) {
+    const head = b.toString("latin1");
+    return head.includes("ppt/") ? "pptx" : head.includes("word/") ? "docx" : head.includes("xl/") ? "xlsx" : "zip";
+  }
+  if (at(0, "ID3") || (b[0] === 0xff && (b[1] & 0xe0) === 0xe0)) return "mp3";
+  if (at(0, "fLaC")) return "flac";
+  if (at(0, "OggS")) return "ogg";
+  if (at(0, "Rar!")) return "rar";
+  if (at(0, "7z\xbc\xaf")) return "7z";
+  return "";
+}
+// Files that came in without an extension get the right one (renamed on disk
+// and in the index). Runs when the file list loads, so old uploads get fixed too.
+async function fixExtensions() {
+  const todo = await withIndex((idx) => Object.entries(idx).filter(([, e]) => e && e.name && !HAS_EXT.test(e.name)).map(([id, e]) => [id, e.name]));
+  if (!todo.length) return;
+  const found = [];
+  for (const [id, name] of todo) {
+    try { const ext = await sniffExt(path.join(FILES_DIR, id, name)); if (ext) found.push([id, name, ext]); } catch {}
+  }
+  if (!found.length) return;
+  await withIndex(async (idx, save) => {
+    let changed = false;
+    for (const [id, name, ext] of found) {
+      const e = idx[id];
+      if (!e || e.name !== name) continue;
+      const next = `${name}.${ext}`;
+      try { await fsp.rename(path.join(FILES_DIR, id, name), path.join(FILES_DIR, id, next)); } catch { continue; }
+      e.name = next;
+      changed = true;
+    }
+    if (changed) await save();
+  });
+}
+
 let keyFails = [];
 async function keyUpload(req, res, url) {
   const now = Date.now();
@@ -1111,9 +1168,12 @@ async function keyUpload(req, res, url) {
   let rawName = url.searchParams.get("name") || "";
   if (!rawName && req.headers["x-name"]) rawName = Buffer.from(String(req.headers["x-name"]), "latin1").toString("utf8");
   const type = String(req.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
+  if (type === "multipart/form-data" || type === "application/x-www-form-urlencoded" || type === "application/json") {
+    fail(400, "In the shortcut, set the request body (Haupttext) to File (Datei), not Form or JSON.");
+  }
   const ext = TYPE_EXT[type] || "";
   let name = cleanFileName(rawName, `upload-${new Date().toISOString().slice(0, 16).replace(/[T:]/g, "-")}`);
-  if (!/.[A-Za-z0-9]{1,8}$/.test(name) && ext) name += `.${ext}`;
+  if (!HAS_EXT.test(name) && ext) name += `.${ext}`;
   const declared = +(req.headers["content-length"] || 0);
   if (declared > MAX_UPLOAD_BYTES) fail(413, "Files can be up to 2 GB.");
   await ensureRoom(declared);
@@ -1123,6 +1183,10 @@ async function keyUpload(req, res, url) {
   try { size = await streamTo(req, path.join(dir, name), MAX_UPLOAD_BYTES); }
   catch (e) { await fsp.rm(dir, { recursive: true, force: true }); throw e; }
   if (!size) { await fsp.rm(dir, { recursive: true, force: true }); fail(400, "The file was empty."); }
+  if (!HAS_EXT.test(name)) {
+    const found = await sniffExt(path.join(dir, name)).catch(() => "");
+    if (found) { await fsp.rename(path.join(dir, name), path.join(dir, `${name}.${found}`)); name = `${name}.${found}`; }
+  }
   await withIndex(async (idx, save) => { idx[id] = { name, size, uploaded: Date.now(), folder: "sys-uploads", from: "key", shared: true }; await save(); });
   key.used = Date.now(); key.uses = (key.uses || 0) + 1;
   await writeKeys(keys).catch(() => {});
@@ -1134,6 +1198,7 @@ async function keyUpload(req, res, url) {
 async function fileRoutes(req, res, p, m, url) {
   if (p === "/api/files" && m === "GET") {
     await importJobs();
+    await fixExtensions().catch(() => {});
     const [{ files, folders }, lim] = await Promise.all([
       withIndex((idx, _s, folders) => ({
         files: Object.entries(idx).map(([id, e]) => ({ id, ...e, shared: isShared(e) })).sort((a, b) => (b.uploaded || 0) - (a.uploaded || 0)),
@@ -2106,7 +2171,7 @@ const FP_EXT = {
   video: /\.(mp4|webm|mov|m4v|ogv)$/i,
   audio: /\.(mp3|m4a|aac|wav|ogg|oga|opus|flac)$/i,
   pdf: /\.pdf$/i,
-  office: /\.(pptx|ppt|pptm|ppsx|pps|odp|docx|doc|docm|odt|rtf|xlsx|xls|xlsm|ods)$/i,
+  office: /\.(pptx|ppt|pptm|ppsx|pps|odp|docx|doc|docm|odt|rtf|xlsx|xls|xlsm|ods|heic|heif)$/i,
   text: /\.(txt|md|log|json|csv|tsv|ya?ml|ini|cfg|conf|toml|properties|env\.example|py|js|mjs|ts|tsx|jsx|css|scss|html?|xml|svg|sh|bat|cmd|ps1|java|kt|c|cc|cpp|h|hpp|cs|go|rs|lua|rb|php|sql|srt|vtt|gitignore|dockerfile)$/i,
 };
 const FP_TEXT_MAX = 256 * 1024;

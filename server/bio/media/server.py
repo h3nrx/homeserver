@@ -1829,7 +1829,7 @@ def dl_list(kind: str = "download") -> dict:
 # LibreOffice turns them into a PDF, poppler turns the pages into JPEGs.
 # The pictures sit next to the file in /files/<id>/.preview/, so they're
 # deleted together with it and nginx serves them under /f/<id>/.preview/.
-PV_EXT = re.compile(r"\.(pptx|ppt|pptm|ppsx|pps|odp|docx|doc|docm|odt|rtf|xlsx|xls|xlsm|ods|pdf)$", re.I)
+PV_EXT = re.compile(r"\.(pptx|ppt|pptm|ppsx|pps|odp|docx|doc|docm|odt|rtf|xlsx|xls|xlsm|ods|pdf|heic|heif)$", re.I)
 PV_ID = re.compile(r"^[A-Za-z0-9_-]{12}$")
 PV_MAX_PAGES = 40
 PV_MAX_SIZE = 200 * 1024 * 1024
@@ -1891,6 +1891,17 @@ def _pv_run(fid: str, src: Path, sig: str) -> None:
             work.mkdir()
             inp = work / ("in" + src.suffix.lower())
             shutil.copyfile(src, inp)
+            if inp.suffix in (".heic", ".heif"):
+                # iPhone photos: one picture, turned upright, as JPEG
+                from PIL import Image, ImageOps
+                import pillow_heif
+                pillow_heif.register_heif_opener()
+                with Image.open(inp) as im:
+                    im = ImageOps.exif_transpose(im).convert("RGB")
+                    im.thumbnail((2000, 2000))
+                    im.save(work / "p-1.jpg", "JPEG", quality=85)
+                _pv_write(fid, {"state": "ready", "sig": sig, "pages": 1, "total": 1}, [work / "p-1.jpg"])
+                return
             if inp.suffix == ".pdf":
                 inp.rename(work / "in.pdf")
             else:
