@@ -4185,7 +4185,7 @@ function fxMenu(row, x, y) {
     if (a === "open") location.hash = fxHash(row.dataset.folder);
     else if (a === "newin") fxNewFolder(row.dataset.folder);
     else if (a === "openfile") window.open(link, "_blank", "noopener");
-    else if (a === "download") { const l = document.createElement("a"); l.href = link; l.download = f.name; document.body.appendChild(l); l.click(); l.remove(); }
+    else if (a === "download") { const l = document.createElement("a"); l.href = link + "?dl=1"; l.download = f.name; document.body.appendChild(l); l.click(); l.remove(); }
     else if (a === "copy") copy(location.origin + link, "Link copied");
     else if (a === "rename") fxRename(row);
     else if (a === "move") fxPickFolder(filesState.sel.has(key) && filesState.sel.size > 1 ? [...filesState.sel] : [key]);

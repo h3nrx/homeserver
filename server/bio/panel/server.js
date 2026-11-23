@@ -2066,6 +2066,118 @@ document.getElementById("wrap").addEventListener("click", () => document.querySe
 </html>`;
 }
 
+/* ========================== File Host: preview page ========================== */
+// When a share link /f/<id>/<name> is opened in a browser tab, nginx sends it
+// here: the file is shown first, with a download button. Embeds, Discord,
+// curl and ?dl=1 / ?raw=1 still get the file itself straight from nginx.
+const FP_EXT = {
+  image: /\.(jpe?g|png|gif|webp|avif|bmp|ico)$/i,
+  video: /\.(mp4|webm|mov|m4v|ogv)$/i,
+  audio: /\.(mp3|m4a|aac|wav|ogg|oga|opus|flac)$/i,
+  pdf: /\.pdf$/i,
+  text: /\.(txt|md|log|json|csv|tsv|ya?ml|ini|cfg|conf|toml|properties|env\.example|py|js|mjs|ts|tsx|jsx|css|scss|html?|xml|svg|sh|bat|cmd|ps1|java|kt|c|cc|cpp|h|hpp|cs|go|rs|lua|rb|php|sql|srt|vtt|gitignore|dockerfile)$/i,
+};
+const FP_TEXT_MAX = 256 * 1024;
+const FP_T = {
+  en: { dl: "Download", open: "Open in browser", none: "No preview for this file type.", cut: "Preview shortened. Download the file to see all of it.",
+        missing: "File not found", gone: "It was deleted or the link is wrong.", shared: "Shared file" },
+  de: { dl: "Herunterladen", open: "Im Browser öffnen", none: "Für diesen Dateityp gibt es keine Vorschau.", cut: "Vorschau gekürzt. Lade die Datei herunter, um alles zu sehen.",
+        missing: "Datei nicht gefunden", gone: "Sie wurde gelöscht oder der Link ist falsch.", shared: "Geteilte Datei" },
+};
+async function filePage(req, res, id, rawName) {
+  const t = /^de\b/i.test(String(req.headers["accept-language"] || "")) ? FP_T.de : FP_T.en;
+  const lang = t === FP_T.de ? "de" : "en";
+  let name = "";
+  try { name = decodeURIComponent(rawName); } catch {}
+  const html = (status, body) => { res.writeHead(status, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Vary": "Accept-Language" }); res.end(req.method === "HEAD" ? "" : body); };
+  let st = null;
+  if (name && !/[\/\\]/.test(name) && name !== "." && name !== "..") {
+    try { st = await fsp.stat(path.join(FILES_DIR, id, name)); } catch {}
+  }
+  if (!st || !st.isFile()) return html(404, FILE_HTML({ t, lang, missing: true }));
+  let info = null;
+  try { info = (JSON.parse(await fsp.readFile(FILES_INDEX, "utf8")))[id] || null; } catch {}
+  const kind = Object.keys(FP_EXT).find((k) => FP_EXT[k].test(name)) || "other";
+  let text = null, cut = false;
+  if (kind === "text") {
+    const fh = await fsp.open(path.join(FILES_DIR, id, name), "r");
+    try {
+      const buf = Buffer.alloc(Math.min(st.size, FP_TEXT_MAX));
+      await fh.read(buf, 0, buf.length, 0);
+      if (!buf.includes(0)) { text = buf.toString("utf8"); cut = st.size > FP_TEXT_MAX; }
+    } finally { await fh.close(); }
+  }
+  const when = new Date((info && info.uploaded) || st.mtimeMs).toLocaleDateString(lang === "de" ? "de-DE" : "en-GB", { day: "numeric", month: "short", year: "numeric" });
+  return html(200, FILE_HTML({ t, lang, id, name, size: st.size, when, kind, text, cut, origin: publicOrigin(req) }));
+}
+function FILE_HTML({ t, lang, id, name, size, when, kind, text, cut, origin, missing }) {
+  const src = missing ? "" : `/f/${id}/${encodeURIComponent(name)}`;
+  const ext = missing ? "" : (/\.([A-Za-z0-9]{1,8})$/.exec(name) || [, "file"])[1].toUpperCase();
+  const icon = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+  const view = missing ? "" : kind === "image" ? `<img src="${src}" alt="${htmlEsc(name)}">`
+    : kind === "video" ? `<video src="${src}" controls playsinline preload="metadata"></video>`
+    : kind === "audio" ? `<div class="big"><div class="ext">${htmlEsc(ext)}</div><audio src="${src}" controls preload="metadata"></audio></div>`
+    : text != null ? `<pre>${htmlEsc(text)}</pre>${cut ? `<div class="cut">${t.cut}</div>` : ""}`
+    : `<div class="big"><div class="ext">${htmlEsc(ext)}</div><span>${kind === "pdf" ? "PDF" : t.none}</span></div>`;
+  const ogMedia = missing || !origin ? "" : kind === "image" ? `<meta property="og:image" content="${origin}${src}">`
+    : kind === "video" ? `<meta property="og:video" content="${origin}${src}">` : "";
+  return `<!doctype html>
+<html lang="${lang}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>${htmlEsc(missing ? t.missing : name)} · __BRAND__</title>
+<meta name="theme-color" content="#05070f">
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="/img/__ICON__-logo-64.png">
+${missing ? "" : `<meta property="og:site_name" content="__BRAND__">
+<meta property="og:title" content="${htmlEsc(name)}">
+<meta property="og:description" content="${htmlEsc(`${t.shared} · ${bytesStr(size)}`)}">
+${ogMedia}`}
+<style>
+@font-face { font-family: "Geist"; src: url("/fonts/geist.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body { background: #05070f; color: #eef1f7; font: 400 15px/1.5 "Geist", system-ui, sans-serif; letter-spacing: -.01em; -webkit-font-smoothing: antialiased; }
+body::before { content: ""; position: fixed; inset: 0; z-index: -1; background: radial-gradient(1000px 520px at 50% -12%, rgba(110,164,255,.16), transparent 70%), url("/img/backdrop.jpg") center 75% / cover no-repeat; opacity: .3; }
+a { color: inherit; text-decoration: none; }
+.top { max-width: 1000px; margin: 0 auto; padding: 18px 20px; }
+.brand { font-weight: 600; letter-spacing: -.035em; }
+main { max-width: 1000px; margin: 0 auto; padding: 4px 20px calc(110px + env(safe-area-inset-bottom)); }
+h1 { margin: 6px 0 2px; font-size: clamp(20px, 3vw, 28px); font-weight: 600; letter-spacing: -.035em; line-height: 1.25; overflow-wrap: anywhere; }
+.meta { color: rgba(238,241,247,.6); font-variant-numeric: tabular-nums; margin-bottom: 18px; }
+.view { border-radius: 18px; border: 1px solid rgba(255,255,255,.08); background: rgba(6,9,20,.82); backdrop-filter: blur(14px); overflow: hidden; box-shadow: 0 30px 90px rgba(0,0,0,.5); }
+.view img, .view video { display: block; width: 100%; max-height: 72vh; object-fit: contain; background: #000; }
+.view pre { margin: 0; padding: 16px 18px; max-height: 70vh; overflow: auto; font: 13px/1.6 ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 4; }
+.cut { padding: 10px 18px; border-top: 1px solid rgba(255,255,255,.08); color: rgba(238,241,247,.6); font-size: 13px; }
+.big { display: grid; place-items: center; gap: 14px; padding: 48px 20px; text-align: center; color: rgba(238,241,247,.6); }
+.ext { display: grid; place-items: center; width: 86px; height: 104px; border-radius: 14px; background: rgba(110,164,255,.12); border: 1px solid rgba(110,164,255,.3); color: #cfe0ff; font-weight: 600; font-size: 15px; letter-spacing: .02em; overflow: hidden; }
+.big audio { width: min(420px, 100%); }
+.acts { position: fixed; left: 0; right: 0; bottom: 0; display: flex; justify-content: center; gap: 10px; padding: 14px 20px calc(14px + env(safe-area-inset-bottom)); background: linear-gradient(transparent, rgba(5,7,15,.92) 40%); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 48px; padding: 0 22px; border-radius: 999px; border: 1px solid rgba(255,255,255,.13); background: rgba(20,24,36,.9); color: #eef1f7; font: 500 15px "Geist", system-ui, sans-serif; }
+.btn.primary { background: #6ea4ff; border-color: transparent; color: #050b1a; font-weight: 600; }
+.btn svg { width: 18px; height: 18px; }
+.missing { display: grid; place-items: center; min-height: 60vh; text-align: center; color: rgba(238,241,247,.6); }
+.missing b { display: block; margin-bottom: 6px; color: #eef1f7; font-size: 22px; }
+@media (max-width: 600px) { .btn { flex: 1; padding: 0 12px; } }
+</style>
+</head>
+<body>
+<header class="top"><a class="brand" href="/">__BRAND__</a></header>
+<main>
+${missing ? `<div class="missing"><div><b>${t.missing}</b>${t.gone}</div></div>` : `
+  <h1>${htmlEsc(name)}</h1>
+  <div class="meta">${htmlEsc(bytesStr(size))} · ${htmlEsc(when)}</div>
+  <div class="view">${view}</div>
+  <div class="acts">
+    ${kind === "pdf" ?`<a class="btn" href="${src}?raw=1">${t.open}</a>` : ""}
+    <a class="btn primary" href="${src}?dl=1" download="${htmlEsc(name)}">${icon('<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/>')}${t.dl}</a>
+  </div>`}
+</main>
+</body>
+</html>`;
+}
+
 /* ========================== Discord compressor ========================== */
 // Upload goes straight to /files/downloads/<id>/source.<ext>; media squeezes it
 // under Discord's limit. Results share the downloader's storage and /d/ links.
@@ -2616,6 +2728,7 @@ async function route(req, res) {
   if (p === "/api/look" && m === "GET") return send(res, 200, { design: (await readPrefs()).design || null });
   { const c = p.match(/^\/c\/([^/]+)$/); if (c && (m === "GET" || m === "HEAD")) return clipPage(req, res, c[1]); }
   { const c = p.match(/^\/p\/([A-Za-z0-9_-]{10})(\/raw)?$/); if (c && (m === "GET" || m === "HEAD")) return pastePage(req, res, c[1], !!c[2]); }
+  { const c = p.match(/^\/f\/([A-Za-z0-9_-]{12})\/([^/]+)$/); if (c && (m === "GET" || m === "HEAD")) return filePage(req, res, c[1], c[2]); }
   if (p === "/api/session" && m === "GET") return send(res, 200, { authed: isAuthed(req) });
   // Progress only (no details), so the update screen can follow along while
   // the panel restarts and the old session is gone.

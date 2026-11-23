@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.1
+
+Geteilte Dateien erst ansehen, dann herunterladen.
+
+- Wer einen File-Host-Link im Browser öffnet (z. B. am Handy), sieht jetzt zuerst eine Vorschau statt eines sofortigen Downloads: Bilder, Videos, Musik und Textdateien direkt auf der Seite, alles andere mit Name und Größe.
+- Darunter ein großer „Herunterladen“-Knopf. PDFs lassen sich zusätzlich im Browser öffnen.
+- Gilt auch für Links, die schon verschickt wurden.
+- Discord-Vorschauen und eingebettete Bilder funktionieren wie vorher.
+- Die Seite ist auf Deutsch, wenn der Browser Deutsch eingestellt hat.
+
 ## 1.1.0
 
 Admin-Panel jetzt auch auf Deutsch.
