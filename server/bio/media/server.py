@@ -1824,6 +1824,107 @@ def dl_list(kind: str = "download") -> dict:
     return {"jobs": jobs, "total": sum(j.get("size") or 0 for j in jobs), "keep_days": DL_KEEP // 86400}
 
 
+# =========================== office file preview ===========================
+# PowerPoint, Word and Excel files shared from the File Host get a preview:
+# LibreOffice turns them into a PDF, poppler turns the pages into JPEGs.
+# The pictures sit next to the file in /files/<id>/.preview/, so they're
+# deleted together with it and nginx serves them under /f/<id>/.preview/.
+PV_EXT = re.compile(r"\.(pptx|ppt|pptm|ppsx|pps|odp|docx|doc|docm|odt|rtf|xlsx|xls|xlsm|ods|pdf)$", re.I)
+PV_ID = re.compile(r"^[A-Za-z0-9_-]{12}$")
+PV_MAX_PAGES = 40
+PV_MAX_SIZE = 200 * 1024 * 1024
+_pv_lock = threading.Lock()
+_pv_busy: set[str] = set()
+_pv_one = threading.Semaphore(1)  # one LibreOffice at a time (shared profile, RAM)
+
+
+def _pv_sig(src: Path) -> str:
+    st = src.stat()
+    return f"{st.st_size}-{int(st.st_mtime)}"
+
+
+def _pv_meta(fid: str) -> dict:
+    try:
+        return json.loads((FILES / fid / ".preview" / "meta.json").read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def office_preview(body: dict) -> dict:
+    fid, name = str(body.get("id", "")), str(body.get("name", ""))
+    if not PV_ID.match(fid) or not name or "/" in name or "\\" in name or name in (".", "..") or name.startswith("."):
+        raise ValueError("Invalid file.")
+    if not PV_EXT.search(name):
+        return {"state": "none"}
+    src = FILES / fid / name
+    if not src.is_file():
+        raise LookupError("File not found.")
+    if src.stat().st_size > PV_MAX_SIZE:
+        return {"state": "error"}
+    sig = _pv_sig(src)
+    meta = _pv_meta(fid)
+    if meta.get("sig") == sig and meta.get("state") in ("ready", "error"):
+        return meta
+    with _pv_lock:
+        if fid not in _pv_busy:
+            _pv_busy.add(fid)
+            threading.Thread(target=_pv_run, args=(fid, src, sig), daemon=True).start()
+    return {"state": "working"}
+
+
+def _pv_write(fid: str, meta: dict, pages: list[Path]) -> None:
+    out, tmp = FILES / fid / ".preview", FILES / fid / ".preview.tmp"
+    shutil.rmtree(tmp, ignore_errors=True)
+    tmp.mkdir()
+    for i, p in enumerate(pages, 1):
+        shutil.move(str(p), tmp / f"{i}.jpg")
+    (tmp / "meta.json").write_text(json.dumps(meta))
+    shutil.rmtree(out, ignore_errors=True)
+    tmp.rename(out)
+
+
+def _pv_run(fid: str, src: Path, sig: str) -> None:
+    work = Path(f"/tmp/pv-{fid}")
+    try:
+        with _pv_one:
+            shutil.rmtree(work, ignore_errors=True)
+            work.mkdir()
+            inp = work / ("in" + src.suffix.lower())
+            shutil.copyfile(src, inp)
+            if inp.suffix == ".pdf":
+                inp.rename(work / "in.pdf")
+            else:
+                subprocess.run(["nice", "-n", "15", "soffice", "--headless", "--norestore", "--nolockcheck",
+                                "-env:UserInstallation=file:///tmp/lo-profile", "--convert-to", "pdf",
+                                "--outdir", str(work), str(inp)], capture_output=True, timeout=300)
+            pdf = work / "in.pdf"
+            if not pdf.is_file():
+                raise RuntimeError("LibreOffice made no PDF")
+            subprocess.run(["nice", "-n", "15", "pdftoppm", "-jpeg", "-jpegopt", "quality=82", "-scale-to", "1400",
+                            "-l", str(PV_MAX_PAGES), str(pdf), str(work / "p")], capture_output=True, timeout=300, check=True)
+            pages = sorted(work.glob("p-*.jpg"), key=lambda p: int(p.stem.rsplit("-", 1)[1]))
+            if not pages:
+                raise RuntimeError("no pages")
+            total = len(pages)
+            try:
+                from pypdf import PdfReader
+                total = len(PdfReader(str(pdf)).pages)
+            except Exception:
+                pass
+            _pv_write(fid, {"state": "ready", "sig": sig, "pages": len(pages), "total": total}, pages)
+    except Exception as e:  # noqa: BLE001 - any failure just means "no preview"
+        print(f"preview {fid}: {e}", file=sys.stderr)
+        try:
+            if (FILES / fid).is_dir():
+                _pv_write(fid, {"state": "error", "sig": sig}, [])
+        except OSError:
+            pass
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+        with _pv_lock:
+            _pv_busy.discard(fid)
+
+
 # ================================= http =================================
 class Handler(BaseHTTPRequestHandler):
     server_version = "media"
@@ -1906,6 +2007,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(200, new_compress(self.read_json()))
         if p == ["convert"] and m == "POST":
             return self.send_json(200, new_convert(self.read_json()))
+        if p == ["preview"] and m == "POST":
+            return self.send_json(200, office_preview(self.read_json()))
         if p == ["downloads"] and m == "POST":
             return self.send_json(200, new_download(self.read_json()))
         if len(p) == 2 and p[0] == "downloads" and ID_RE.match(p[1]):

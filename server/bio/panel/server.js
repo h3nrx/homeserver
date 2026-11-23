@@ -2075,14 +2075,17 @@ const FP_EXT = {
   video: /\.(mp4|webm|mov|m4v|ogv)$/i,
   audio: /\.(mp3|m4a|aac|wav|ogg|oga|opus|flac)$/i,
   pdf: /\.pdf$/i,
+  office: /\.(pptx|ppt|pptm|ppsx|pps|odp|docx|doc|docm|odt|rtf|xlsx|xls|xlsm|ods)$/i,
   text: /\.(txt|md|log|json|csv|tsv|ya?ml|ini|cfg|conf|toml|properties|env\.example|py|js|mjs|ts|tsx|jsx|css|scss|html?|xml|svg|sh|bat|cmd|ps1|java|kt|c|cc|cpp|h|hpp|cs|go|rs|lua|rb|php|sql|srt|vtt|gitignore|dockerfile)$/i,
 };
 const FP_TEXT_MAX = 256 * 1024;
 const FP_T = {
   en: { dl: "Download", open: "Open in browser", none: "No preview for this file type.", cut: "Preview shortened. Download the file to see all of it.",
-        missing: "File not found", gone: "It was deleted or the link is wrong.", shared: "Shared file" },
+        missing: "File not found", gone: "It was deleted or the link is wrong.", shared: "Shared file",
+        making: "Making the preview…", first: "The preview shows the first {0} of {1} pages." },
   de: { dl: "Herunterladen", open: "Im Browser öffnen", none: "Für diesen Dateityp gibt es keine Vorschau.", cut: "Vorschau gekürzt. Lade die Datei herunter, um alles zu sehen.",
-        missing: "Datei nicht gefunden", gone: "Sie wurde gelöscht oder der Link ist falsch.", shared: "Geteilte Datei" },
+        missing: "Datei nicht gefunden", gone: "Sie wurde gelöscht oder der Link ist falsch.", shared: "Geteilte Datei",
+        making: "Vorschau wird erstellt…", first: "Die Vorschau zeigt die ersten {0} von {1} Seiten." },
 };
 async function filePage(req, res, id, rawName) {
   const t = /^de\b/i.test(String(req.headers["accept-language"] || "")) ? FP_T.de : FP_T.en;
@@ -2107,16 +2110,51 @@ async function filePage(req, res, id, rawName) {
       if (!buf.includes(0)) { text = buf.toString("utf8"); cut = st.size > FP_TEXT_MAX; }
     } finally { await fh.close(); }
   }
+  let pv = null;
+  if (kind === "office" || kind === "pdf") pv = await filePreview(id, name);
   const when = new Date((info && info.uploaded) || st.mtimeMs).toLocaleDateString(lang === "de" ? "de-DE" : "en-GB", { day: "numeric", month: "short", year: "numeric" });
-  return html(200, FILE_HTML({ t, lang, id, name, size: st.size, when, kind, text, cut, origin: publicOrigin(req) }));
+  return html(200, FILE_HTML({ t, lang, id, name, size: st.size, when, kind, text, cut, pv, origin: publicOrigin(req) }));
 }
-function FILE_HTML({ t, lang, id, name, size, when, kind, text, cut, origin, missing }) {
+// Office files and PDFs: page pictures made by the media service (see there).
+async function filePreview(id, name) {
+  try {
+    const d = await media("/internal/preview", { method: "POST", body: { id, name }, timeout: 4000 });
+    return { state: String(d.state || "error"), pages: +d.pages || 0, total: +d.total || 0, sig: String(d.sig || "") };
+  } catch { return { state: "error" }; }
+}
+async function filePreviewRoute(res, id) {
+  let info = null;
+  try { info = (JSON.parse(await fsp.readFile(FILES_INDEX, "utf8")))[id] || null; } catch {}
+  if (!info || !info.name) return send(res, 404, { error: "File not found." });
+  const pv = await filePreview(id, info.name);
+  return send(res, 200, { state: pv.state });
+}
+function FILE_HTML({ t, lang, id, name, size, when, kind, text, cut, pv, origin, missing }) {
   const src = missing ? "" : `/f/${id}/${encodeURIComponent(name)}`;
   const ext = missing ? "" : (/\.([A-Za-z0-9]{1,8})$/.exec(name) || [, "file"])[1].toUpperCase();
   const icon = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
   const view = missing ? "" : kind === "image" ? `<img src="${src}" alt="${htmlEsc(name)}">`
     : kind === "video" ? `<video src="${src}" controls playsinline preload="metadata"></video>`
     : kind === "audio" ? `<div class="big"><div class="ext">${htmlEsc(ext)}</div><audio src="${src}" controls preload="metadata"></audio></div>`
+    : pv && pv.state === "ready" ? `<div class="pages">${Array.from({ length: pv.pages }, (_, i) =>
+        `<img src="/f/${id}/.preview/${i + 1}.jpg?v=${encodeURIComponent(pv.sig)}" alt="${i + 1}" loading="${i < 2 ? "eager" : "lazy"}">`).join("")}</div>${
+        pv.total > pv.pages ? `<div class="cut">${t.first.replace("{0}", pv.pages).replace("{1}", pv.total)}</div>` : ""}`
+    : pv && pv.state === "working" ? `<div class="big" id="pv-wait"><div class="spin"></div><span>${t.making}</span></div>
+<script>
+(() => {
+  let n = 0;
+  const tick = async () => {
+    n++;
+    try {
+      const d = await (await fetch("/api/fpreview/${id}", { cache: "no-store" })).json();
+      if (d.state === "ready") return location.reload();
+      if (d.state !== "working") { document.getElementById("pv-wait").innerHTML = '<div class="ext">${htmlEsc(ext)}</div><span>${t.none}</span>'; return; }
+    } catch {}
+    if (n < 90) setTimeout(tick, 2500);
+  };
+  setTimeout(tick, 2500);
+})();
+</script>`
     : text != null ? `<pre>${htmlEsc(text)}</pre>${cut ? `<div class="cut">${t.cut}</div>` : ""}`
     : `<div class="big"><div class="ext">${htmlEsc(ext)}</div><span>${kind === "pdf" ? "PDF" : t.none}</span></div>`;
   const ogMedia = missing || !origin ? "" : kind === "image" ? `<meta property="og:image" content="${origin}${src}">`
@@ -2153,6 +2191,10 @@ h1 { margin: 6px 0 2px; font-size: clamp(20px, 3vw, 28px); font-weight: 600; let
 .big { display: grid; place-items: center; gap: 14px; padding: 48px 20px; text-align: center; color: rgba(238,241,247,.6); }
 .ext { display: grid; place-items: center; width: 86px; height: 104px; border-radius: 14px; background: rgba(110,164,255,.12); border: 1px solid rgba(110,164,255,.3); color: #cfe0ff; font-weight: 600; font-size: 15px; letter-spacing: .02em; overflow: hidden; }
 .big audio { width: min(420px, 100%); }
+.pages { display: grid; gap: 10px; padding: 10px; }
+.view .pages img { max-height: none; height: auto; border-radius: 8px; background: #fff; }
+.spin { width: 34px; height: 34px; border-radius: 50%; border: 3px solid rgba(110,164,255,.25); border-top-color: #6ea4ff; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .acts { position: fixed; left: 0; right: 0; bottom: 0; display: flex; justify-content: center; gap: 10px; padding: 14px 20px calc(14px + env(safe-area-inset-bottom)); background: linear-gradient(transparent, rgba(5,7,15,.92) 40%); }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 48px; padding: 0 22px; border-radius: 999px; border: 1px solid rgba(255,255,255,.13); background: rgba(20,24,36,.9); color: #eef1f7; font: 500 15px "Geist", system-ui, sans-serif; }
 .btn.primary { background: #6ea4ff; border-color: transparent; color: #050b1a; font-weight: 600; }
@@ -2729,6 +2771,7 @@ async function route(req, res) {
   { const c = p.match(/^\/c\/([^/]+)$/); if (c && (m === "GET" || m === "HEAD")) return clipPage(req, res, c[1]); }
   { const c = p.match(/^\/p\/([A-Za-z0-9_-]{10})(\/raw)?$/); if (c && (m === "GET" || m === "HEAD")) return pastePage(req, res, c[1], !!c[2]); }
   { const c = p.match(/^\/f\/([A-Za-z0-9_-]{12})\/([^/]+)$/); if (c && (m === "GET" || m === "HEAD")) return filePage(req, res, c[1], c[2]); }
+  { const c = p.match(/^\/api\/fpreview\/([A-Za-z0-9_-]{12})$/); if (c && m === "GET") return filePreviewRoute(res, c[1]); }
   if (p === "/api/session" && m === "GET") return send(res, 200, { authed: isAuthed(req) });
   // Progress only (no details), so the update screen can follow along while
   // the panel restarts and the old session is gone.

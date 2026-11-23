@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.2
+
+Vorschau für PowerPoint, Word, Excel und PDF.
+
+- Geteilte PowerPoint-Dateien (pptx, ppt, odp …) zeigen jetzt alle Folien als Bilder, direkt im Browser, auch am Handy.
+- Genauso für Word (docx, doc, odt, rtf), Excel (xlsx, xls, ods) und PDF.
+- Beim ersten Öffnen wird die Vorschau kurz erstellt (meist ein paar Sekunden). Danach ist sie sofort da.
+- Gezeigt werden bis zu 40 Seiten.
+- Hinweis: Dieses Update baut den Media-Dienst neu (LibreOffice kommt dazu). Das Installieren dauert deshalb einmalig etwa 5 Minuten und braucht rund 600 MB mehr Speicher.
+
 ## 1.1.1
 
 Geteilte Dateien erst ansehen, dann herunterladen.
