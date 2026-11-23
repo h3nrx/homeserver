@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.0
+
+Admin-Panel jetzt auch auf Deutsch.
+
+- Sprache umschaltbar: Deutsch oder Englisch, unter Design → Sprache oder direkt unter dem Login.
+- Die Sprache wird pro Gerät gespeichert. Ohne Auswahl richtet sie sich nach der Sprache des Browsers.
+- Datum, Uhrzeit und „vor 5 Minuten“ passen sich der Sprache an.
+- Plugin-Beschreibungen von Modrinth bleiben im Original.
+
 ## 1.0.0
 
 Erste Version auf GitHub.
