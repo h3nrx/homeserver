@@ -7,7 +7,7 @@ Neu: Kamera-Tab (standardmäßig aus).
 - Nach Kameras suchen (eingebaut oder per USB am Server), eine auswählen und live ansehen. Normal oder HD, mit Vollbild.
 - Die Kamera ist nur an, solange jemand zuschaut. Nichts wird aufgenommen, kein Ton. Nur mit Admin-Login.
 - Der Tab erscheint nur auf Servern, auf denen er eingeschaltet wird: `touch ~/panel-agent/camera.on`. Wieder aus: `rm ~/panel-agent/camera.on`. Danach den Admin neu laden.
-- File Host: restliche englische Texte übersetzt.
+- File Host: weitere englische Texte übersetzt.
 
 ## 1.2.2
 
