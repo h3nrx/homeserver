@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.4
+
+UI ein wenig aufgeräumt.
+
+- Startseite: Die Beschriftung passt jetzt in die Ringe (RAM, Speicher).
+
 ## 1.5.3
 
 Updates-Seite aufgeräumt.
