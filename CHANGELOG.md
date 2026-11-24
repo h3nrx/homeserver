@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.0
+
+Kamera flüssig: bis zu 30 Bilder/s.
+
+- Die Kamera kommt jetzt als Video (H.264) statt als Einzelbilder. Das braucht etwa ein Zehntel der Daten und läuft auch über die Website flüssig.
+- 30 statt 15 Bilder/s. Auflösung und Bilder/s stehen oben links.
+- Ist die Verbindung zu langsam, werden Bilder übersprungen, statt immer weiter hinterherzuhängen.
+- Alte Browser ohne Video-Decoder bekommen weiter Einzelbilder.
+- Beim Installieren startet der Media-Dienst neu, das Radio setzt kurz aus.
+
 ## 1.4.1
 
 Bessere Kamera-Qualität.

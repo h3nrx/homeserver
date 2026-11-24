@@ -1937,6 +1937,9 @@ def _pv_run(fid: str, src: Path, sig: str) -> None:
 
 
 # ================================= http =================================
+live_slots = threading.BoundedSemaphore(2)   # live camera viewers at the same time
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "media"
     sys_version = ""
@@ -1989,6 +1992,60 @@ class Handler(BaseHTTPRequestHandler):
     do_PATCH = lambda self: self.handle_any("PATCH")
     do_DELETE = lambda self: self.handle_any("DELETE")
 
+    # ---- live camera: pictures in (chunked body), H.264 out, nothing on disk ----
+    def live(self, qs: dict) -> None:
+        self.close_connection = True
+        if not live_slots.acquire(blocking=False):
+            return self.send_json(503, {"error": "Too many people are watching."})
+        proc = None
+        try:
+            rate = 3000 if qs.get("hd") == ["1"] else 1400
+            proc = subprocess.Popen(
+                ["ffmpeg", "-hide_banner", "-loglevel", "error", "-probesize", "32", "-analyzeduration", "0", "-fflags", "nobuffer", "-flags", "low_delay",
+                 "-use_wallclock_as_timestamps", "1", "-f", "mjpeg", "-i", "pipe:0", "-an", "-fps_mode", "passthrough",
+                 "-vf", "scale=in_range=pc:out_range=tv,format=yuv420p", "-c:v", "libx264", "-preset", "superfast", "-tune", "zerolatency",
+                 "-profile:v", "baseline", "-level", "3.1", "-b:v", f"{rate}k", "-maxrate", f"{rate + 400}k", "-bufsize", f"{rate // 2}k",
+                 "-g", "30", "-x264-params", "aud=1:repeat-headers=1:scenecut=0", "-flush_packets", "1", "-f", "h264", "pipe:1"],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
+
+            def feed() -> None:
+                try:
+                    while True:
+                        size = int(self.rfile.readline(32).split(b";")[0] or b"0", 16)
+                        if not 0 < size <= 8_000_000:
+                            break
+                        left = size
+                        while left:
+                            part = self.rfile.read(min(left, 65536))
+                            if not part:
+                                return
+                            proc.stdin.write(part)
+                            left -= len(part)
+                        self.rfile.readline(8)
+                except (OSError, ValueError):
+                    pass
+                finally:
+                    try:
+                        proc.stdin.close()
+                    except OSError:
+                        pass
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            threading.Thread(target=feed, daemon=True).start()
+            while True:
+                part = proc.stdout.read(65536)
+                if not part:
+                    break
+                self.wfile.write(part)
+        finally:
+            if proc:
+                proc.kill()
+                proc.wait()
+            live_slots.release()
+
     # ---- panel API ----
     def internal(self, m: str, p: list[str], qs: dict) -> None:
         if p == ["stations"] and m == "GET":
@@ -2007,6 +2064,8 @@ class Handler(BaseHTTPRequestHandler):
             if p[2:] == ["move"] and m == "POST":
                 move_station(p[1], self.read_json().get("dir") == "up")
                 return self.send_json(200, {"ok": True})
+        if p == ["live"] and m == "POST":
+            return self.live(qs)
         if p == ["downloads"] and m == "GET":
             kind = (qs.get("kind") or ["download"])[0]
             return self.send_json(200, dl_list(kind if kind in ("compress", "convert", "cutout", "upscale") else "download"))

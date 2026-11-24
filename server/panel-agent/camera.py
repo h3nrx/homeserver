@@ -37,7 +37,7 @@ SYS = Path("/sys/class/video4linux")
 DEV = re.compile(r"^video\d{1,3}$")
 IDLE = 4.0          # seconds without a viewer until the camera goes off
 SIZES = {False: (640, 480), True: (1280, 720)}
-FPS = 15
+FPS = 30
 
 # ---- V4L2 (64-bit layout) ----
 MJPG = 0x47504A4D
@@ -60,7 +60,9 @@ S_PARM = _ioc(3, 22, 204)
 QUERYCTRL = _ioc(3, 36, 68)
 G_CTRL = _ioc(3, 27, 8)
 S_CTRL = _ioc(3, 28, 8)
-POWER_LINE = 0x980918      # 1 = 50 Hz light; cameras sold for the US flicker here
+# set on every start: 50 Hz light (cameras sold for the US flicker here) and
+# no halving of the frame rate in dim light
+PRESET = ((0x980918, 1), (0x9A0903, 0))
 CONTROLS = {"brightness": 0x980900, "contrast": 0x980901, "saturation": 0x980902, "sharpness": 0x98091B,
             "backlight": 0x98091C, "zoom": 0x9A090D}
 CAPTURE = 1
@@ -241,10 +243,11 @@ class Cam:
         on = False
         kind = bytearray(struct.pack("<i", CAPTURE))
         try:
-            try:
-                fcntl.ioctl(fd, S_CTRL, bytearray(struct.pack("<Ii", POWER_LINE, 1)))
-            except OSError:
-                pass
+            for cid, value in PRESET:
+                try:
+                    fcntl.ioctl(fd, S_CTRL, bytearray(struct.pack("<Ii", cid, value)))
+                except OSError:
+                    pass
             w, h = SIZES[hd]
             fmt = bytearray(208)
             struct.pack_into("<I", fmt, 0, CAPTURE)

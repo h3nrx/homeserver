@@ -2919,6 +2919,82 @@ async function cameraRoutes(req, res, p, m, url) {
   });
 }
 
+// Live video: the camera's pictures go through the media container (H.264) and
+// on to the browser as [length u32][key u8][access unit]. About a tenth of the
+// data of single pictures, so it stays smooth over the internet.
+function camPicture(dev, hd, after) {
+  return new Promise((resolve, reject) => {
+    const r = http.get({ socketPath: CAM_SOCK, path: `/frame?dev=${dev}&hd=${hd}&after=${after}`, timeout: 12000, agent: false }, (up) => {
+      const parts = [];
+      up.on("data", (c) => parts.push(c));
+      up.on("error", reject);
+      up.on("end", () => {
+        const body = Buffer.concat(parts);
+        if (up.statusCode === 200) return resolve({ seq: +up.headers["x-frame"] || 0, body });
+        let msg = "The camera stopped working.";
+        try { msg = JSON.parse(body).error || msg; } catch {}
+        reject(new HttpError(503, msg));
+      });
+    });
+    r.on("timeout", () => r.destroy(new Error("timeout")));
+    r.on("error", (e) => reject(e instanceof HttpError ? e : new HttpError(503, "The camera service isn't running.")));
+  });
+}
+async function cameraLive(req, res, q) {
+  const dev = q.get("dev") || "", hd = q.get("hd") === "1" ? 1 : 0;
+  if (!/^video\d{1,3}$/.test(dev)) fail(400, "Invalid camera.");
+  let pic = await camPicture(dev, hd, 0);   // camera errors still become a normal answer here
+  let open = true;
+  const enc = http.request({ host: MEDIA_HOST, port: MEDIA_PORT, path: `/internal/live?hd=${hd}`, method: "POST", agent: false,
+    headers: { "X-Media-Token": MEDIA_TOKEN, "Transfer-Encoding": "chunked" } });
+  const stop = (hard) => { open = false; enc.destroy(); if (hard === true) res.destroy(); else if (res.headersSent) res.end(); };
+  res.on("close", stop);
+  const ready = new Promise((resolve, reject) => {
+    enc.on("error", () => { open = false; reject(new HttpError(503, "The video service isn't running.")); if (res.headersSent) res.end(); });
+    enc.on("response", (up) => {
+      if (up.statusCode !== 200) { stop(); return reject(new HttpError(503, "The video service isn't running.")); }
+      res.writeHead(200, { "Content-Type": "application/octet-stream", "Cache-Control": "no-store", "X-Accel-Buffering": "no" });
+      const AUD = Buffer.from([0, 0, 0, 1, 9]);
+      let buf = Buffer.alloc(0), skip = true, taken = Date.now();
+      up.on("data", (c) => {
+        buf = Buffer.concat([buf, c]);
+        if (buf.length > 4e6) return stop();
+        let next;
+        while ((next = buf.indexOf(AUD, 4)) > 0) {
+          const unit = buf.subarray(0, next);
+          buf = buf.subarray(next);
+          const sps = unit.indexOf(Buffer.from([0, 0, 0, 1, 0x67]));
+          const key = sps >= 0 && sps < 32;   // headers come right before every key frame
+          // a slow viewer skips ahead to the next key frame instead of lagging behind
+          if (res.writableLength > 250e3) {
+            skip = true;
+            if (Date.now() - taken > 12e3) return stop(true);   // nobody reads anymore
+          } else taken = Date.now();
+          if (skip && !key) continue;
+          if (res.writableLength > 250e3) continue;
+          skip = false;
+          const head = Buffer.alloc(5);
+          head.writeUInt32BE(unit.length, 0);
+          head[4] = key ? 1 : 0;
+          res.write(head);
+          res.write(unit);
+        }
+      });
+      up.on("error", stop);
+      up.on("close", stop);
+      resolve();
+    });
+  });
+  const pump = (async () => {
+    while (open && isAuthed(req)) {
+      if (enc.writableLength < 600e3) enc.write(pic.body);   // encoder behind: drop this picture
+      pic = await camPicture(dev, hd, pic.seq);
+    }
+  })().catch(() => {}).finally(() => stop());
+  await ready;
+  await pump;
+}
+
 /* ================================ Router ================================ */
 async function route(req, res) {
   const url = new URL(req.url, "http://x");
@@ -2997,6 +3073,7 @@ async function route(req, res) {
   if (p === "/api/files" || p.startsWith("/api/files/")) return fileRoutes(req, res, p, m, url);
   if (p === "/api/power") return powerRoutes(req, res, p, m);
   if (p === "/api/camera" && m === "GET") return send(res, 200, { enabled: !!(await fsp.stat(CAM_SOCK).catch(() => null)) });
+  if (p === "/api/camera/live" && m === "GET") return cameraLive(req, res, url.searchParams);
   if (p.startsWith("/api/camera/")) return cameraRoutes(req, res, p, m, url);
   if (p === "/api/update" || p === "/api/update/install" || p === "/api/update/key") return updateRoutes(req, res, p, m, url);
   if (p === "/api/clips" || p.startsWith("/api/clips/")) return clipRoutes(req, res, p, m, url);
