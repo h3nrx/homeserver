@@ -6,6 +6,8 @@ Live camera for the admin panel. Off by default: panel-agent starts it
 Talks HTTP on a unix socket that only the panel can reach:
   GET /scan                                  list of cameras
   GET /frame?dev=video0&hd=0&after=<seq>     newest JPEG (waits for a new one)
+  GET /controls?dev=video0                   picture controls and their ranges
+  GET /set?dev=video0&name=sharpness&value=9 change one of them
 
 The camera is open only while frames are being asked for and is closed a few
 seconds after the last request. Nothing is recorded, there is no sound.
@@ -55,6 +57,12 @@ DQBUF = _ioc(3, 17, 88)
 STREAMON = _ioc(1, 18, 4)
 STREAMOFF = _ioc(1, 19, 4)
 S_PARM = _ioc(3, 22, 204)
+QUERYCTRL = _ioc(3, 36, 68)
+G_CTRL = _ioc(3, 27, 8)
+S_CTRL = _ioc(3, 28, 8)
+POWER_LINE = 0x980918      # 1 = 50 Hz light; cameras sold for the US flicker here
+CONTROLS = {"brightness": 0x980900, "contrast": 0x980901, "saturation": 0x980902, "sharpness": 0x98091B,
+            "backlight": 0x98091C, "zoom": 0x9A090D}
 CAPTURE = 1
 MMAP = 1
 BUF_ERROR = 0x40
@@ -141,6 +149,39 @@ def scan() -> list[dict]:
     return out
 
 
+def ctrl_range(fd: int, cid: int) -> tuple[int, int, int, int] | None:
+    """(min, max, step, default), or None when the camera doesn't have it."""
+    b = bytearray(68)
+    struct.pack_into("<I", b, 0, cid)
+    try:
+        fcntl.ioctl(fd, QUERYCTRL, b)
+    except OSError:
+        return None
+    lo, hi, step, std, flags = struct.unpack_from("<iiiiI", b, 40)
+    return None if flags & 0x1 or lo >= hi else (lo, hi, max(step, 1), std)
+
+
+def controls(dev: str, name: str = "", value: int = 0) -> list[dict]:
+    fd = os.open(f"/dev/{dev}", os.O_RDWR | os.O_NONBLOCK)
+    try:
+        out = []
+        for key, cid in CONTROLS.items():
+            r = ctrl_range(fd, cid)
+            if not r:
+                continue
+            try:
+                if key == name:
+                    fcntl.ioctl(fd, S_CTRL, bytearray(struct.pack("<Ii", cid, min(max(value, r[0]), r[1]))))
+                b = bytearray(struct.pack("<Ii", cid, 0))
+                fcntl.ioctl(fd, G_CTRL, b)
+            except OSError:
+                continue
+            out.append({"name": key, "min": r[0], "max": r[1], "step": r[2], "default": r[3], "value": struct.unpack("<Ii", b)[1]})
+        return out
+    finally:
+        os.close(fd)
+
+
 class Cam:
     def __init__(self, dev: str):
         self.dev = dev
@@ -200,6 +241,10 @@ class Cam:
         on = False
         kind = bytearray(struct.pack("<i", CAPTURE))
         try:
+            try:
+                fcntl.ioctl(fd, S_CTRL, bytearray(struct.pack("<Ii", POWER_LINE, 1)))
+            except OSError:
+                pass
             w, h = SIZES[hd]
             fmt = bytearray(208)
             struct.pack_into("<I", fmt, 0, CAPTURE)
@@ -297,6 +342,15 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if u.path == "/scan":
                 return self.reply(200, json.dumps({"cameras": scan()}).encode())
+            if u.path in ("/controls", "/set"):
+                dev, name, value = q.get("dev", ""), q.get("name", ""), q.get("value", "0")
+                if not DEV.match(dev) or not re.fullmatch(r"-?\d{1,6}", value):
+                    return self.reply(404, b'{"error": "The camera was unplugged."}')
+                try:
+                    got = controls(dev, name if u.path == "/set" else "", int(value))
+                except OSError:
+                    return self.reply(503, b'{"error": "The camera was unplugged."}')
+                return self.reply(200, json.dumps({"controls": got}).encode())
             if u.path == "/frame":
                 dev, after = q.get("dev", ""), q.get("after", "0")
                 if not DEV.match(dev) or not after.isdigit() or not (SYS / dev).exists():

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.1
+
+Bessere Kamera-Qualität.
+
+- Die Kamera startet jetzt in HD (1280×720) statt 640×480. Oben links steht die Auflösung.
+- Für 50-Hz-Licht eingestellt: weniger Flimmern und Streifen.
+- Neu: „Bild“ mit Reglern für Helligkeit, Kontrast, Sättigung, Schärfe, Gegenlicht und Zoom, je nach Kamera. Die Werte merkt sich der Browser pro Kamera.
+
 ## 1.4.0
 
 Kurzbefehl-Uploads sind jetzt privat, und Updates klappen auch aus einem privaten Repository.

@@ -2881,8 +2881,9 @@ async function walletSummary() {
 // Only on servers where the camera helper runs (see panel-agent/camera.py);
 // everywhere else the socket doesn't exist and the tab stays hidden.
 const CAM_SOCK = path.join(process.env.IPC_DIR || "/ipc", "camera", "camera.sock");
-function cameraRoutes(req, res, p, m, url) {
-  if (m !== "GET") fail(405, "Not allowed.");
+async function cameraRoutes(req, res, p, m, url) {
+  const set = p === "/api/camera/controls" && m === "POST";
+  if (m !== "GET" && !set) fail(405, "Not allowed.");
   const q = url.searchParams;
   let target = null;
   if (p === "/api/camera/scan") target = "/scan";
@@ -2890,6 +2891,15 @@ function cameraRoutes(req, res, p, m, url) {
     const dev = q.get("dev") || "", after = q.get("after") || "0";
     if (!/^video\d{1,3}$/.test(dev) || !/^\d{1,12}$/.test(after)) fail(400, "Invalid camera.");
     target = `/frame?dev=${dev}&hd=${q.get("hd") === "1" ? 1 : 0}&after=${after}`;
+  }
+  if (p === "/api/camera/controls") {
+    const o = set ? await readJson(req) : { dev: q.get("dev") };
+    if (!/^video\d{1,3}$/.test(o.dev || "")) fail(400, "Invalid camera.");
+    target = `/controls?dev=${o.dev}`;
+    if (set) {
+      if (!/^[a-z]{1,20}$/.test(o.name || "") || !Number.isInteger(o.value) || Math.abs(o.value) > 999999) fail(400, "Invalid value.");
+      target = `/set?dev=${o.dev}&name=${o.name}&value=${o.value}`;
+    }
   }
   if (!target) fail(404, "Not found.");
   return new Promise((resolve, reject) => {
