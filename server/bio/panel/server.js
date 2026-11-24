@@ -912,7 +912,9 @@ async function writePrefs(b) {
     if (!PREF_HUBS.has(hub)) fail(400, "Unknown page.");
     if (v === null) { delete prefs.tiles[hub]; continue; }
     const clean = (a) => (Array.isArray(a) ? a.filter((x) => typeof x === "string" && TILE_ID.test(x)).slice(0, 40) : []);
-    prefs.tiles[hub] = { order: clean(v.order), hidden: clean(v.hidden) };
+    const sizes = {};
+    for (const [id, z] of Object.entries((v && v.sizes) || {}).slice(0, 40)) if (TILE_ID.test(id) && ["s", "m", "l"].includes(z)) sizes[id] = z;
+    prefs.tiles[hub] = { order: clean(v.order), hidden: clean(v.hidden), sizes };
   }
   // Design page: theme, accent color, background, corners, font
   if (b && "design" in b) {

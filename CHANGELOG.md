@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.6.0
+
+Neue Bento-Startseite im Admin, und Panels lassen sich endlich richtig anordnen.
+
+- Startseite: alles in einem Raster. Uhr und Auslastung sind eine große Kachel, der Rest ist klein oder breit.
+- Anordnen neu gebaut: Die Kachel folgt der Maus oder dem Finger, die anderen gleiten zur Seite, und eine gestrichelte Lücke zeigt, wo sie landet.
+- Am Handy: kurz halten zum Verschieben, wischen zum Scrollen. Am Griff geht es sofort.
+- Neuer Knopf für die Größe: klein, breit oder groß.
+- Jede Änderung wird sofort gespeichert. Alte Anordnungen und ausgeblendete Panels bleiben erhalten.
+- Updates-Seite: Versionsnummer steht nicht mehr doppelt im Titel.
+
 ## 1.5.4
 
 UI ein wenig aufgeräumt.
