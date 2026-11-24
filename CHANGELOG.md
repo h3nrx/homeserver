@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.3
+
+Updates-Seite aufgeräumt.
+
+- Eine ruhige, zentrierte Seite statt drei Kästen: Status, Installieren, Neuerungen.
+- Neuerungen werden als richtige Liste angezeigt.
+- Quelle und Zugangsschlüssel stehen klein darunter.
+
 ## 1.5.2
 
 Kamera-Kachel auf der Startseite.
