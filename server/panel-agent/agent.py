@@ -639,11 +639,48 @@ def ensure_dirs() -> None:
     POWER_FILE.unlink(missing_ok=True)
 
 
+# ---- live camera (off unless camera.on exists next to the agent) ----
+CAMERA_ON = Path("__HOME__/panel-agent/camera.on")
+CAMERA_PY = Path("__HOME__/panel-agent/camera.py")
+CAMERA_DIR = STATE / "camera"
+
+
+def camera_loop() -> None:
+    import grp
+    proc = None
+    while not _stop:
+        try:
+            want = CAMERA_ON.is_file() and CAMERA_PY.is_file()
+            if proc and proc.poll() is not None:
+                log(f"camera ended ({proc.returncode})")
+                proc = None
+                time.sleep(10)
+            if want and not proc:
+                CAMERA_DIR.mkdir(mode=0o700, exist_ok=True)
+                os.chown(CAMERA_DIR, OWNER_UID, OWNER_GID)
+                proc = subprocess.Popen(["/usr/bin/python3", "-I", str(CAMERA_PY)], user=OWNER_UID, group=OWNER_GID,
+                                        extra_groups=[grp.getgrnam("video").gr_gid], cwd="/", stdin=subprocess.DEVNULL,
+                                        env={"PATH": "/usr/bin:/bin", "CAMERA_SOCK": str(CAMERA_DIR / "camera.sock")})
+                log("camera started")
+            elif not want and proc:
+                proc.terminate()
+                proc.wait(timeout=10)
+                proc = None
+                log("camera stopped")
+            if not want:
+                (CAMERA_DIR / "camera.sock").unlink(missing_ok=True)
+        except Exception as e:
+            log(f"camera: {e}")
+            time.sleep(30)
+        time.sleep(3)
+
+
 def main() -> None:
     signal.signal(signal.SIGTERM, on_signal)
     signal.signal(signal.SIGINT, on_signal)
     ensure_dirs()
     log("started")
+    threading.Thread(target=camera_loop, daemon=True).start()
     pool = ThreadPoolExecutor(max_workers=4)
     next_stats = next_cleanup = 0.0
     while not _stop:

@@ -2868,6 +2868,38 @@ async function walletSummary() {
     history: d.history.slice(-48).map((x) => x[1]) };
 }
 
+/* ============================== Live camera ============================== */
+// Only on servers where the camera helper runs (see panel-agent/camera.py);
+// everywhere else the socket doesn't exist and the tab stays hidden.
+const CAM_SOCK = path.join(process.env.IPC_DIR || "/ipc", "camera", "camera.sock");
+function cameraRoutes(req, res, p, m, url) {
+  if (m !== "GET") fail(405, "Not allowed.");
+  const q = url.searchParams;
+  let target = null;
+  if (p === "/api/camera/scan") target = "/scan";
+  if (p === "/api/camera/frame") {
+    const dev = q.get("dev") || "", after = q.get("after") || "0";
+    if (!/^video\d{1,3}$/.test(dev) || !/^\d{1,12}$/.test(after)) fail(400, "Invalid camera.");
+    target = `/frame?dev=${dev}&hd=${q.get("hd") === "1" ? 1 : 0}&after=${after}`;
+  }
+  if (!target) fail(404, "Not found.");
+  return new Promise((resolve, reject) => {
+    const r = http.get({ socketPath: CAM_SOCK, path: target, timeout: 12000, agent: false }, (up) => {
+      const h = { "Content-Type": up.headers["content-type"] || "application/json", "Cache-Control": "no-store" };
+      if (up.headers["x-frame"]) h["X-Frame"] = up.headers["x-frame"];
+      if (up.headers["content-length"]) h["Content-Length"] = up.headers["content-length"];
+      res.writeHead(up.statusCode, h);
+      up.pipe(res);
+      up.on("error", () => res.destroy());
+      up.on("end", resolve);
+      up.on("close", resolve);
+    });
+    r.on("timeout", () => r.destroy(new Error("timeout")));
+    r.on("error", () => (res.headersSent ? resolve() : reject(new HttpError(503, "The camera service isn't running."))));
+    res.on("close", () => r.destroy());
+  });
+}
+
 /* ================================ Router ================================ */
 async function route(req, res) {
   const url = new URL(req.url, "http://x");
@@ -2945,6 +2977,8 @@ async function route(req, res) {
   if (p === "/api/bots" || p.startsWith("/api/bots/")) return botRoutes(req, res, p, m, url);
   if (p === "/api/files" || p.startsWith("/api/files/")) return fileRoutes(req, res, p, m, url);
   if (p === "/api/power") return powerRoutes(req, res, p, m);
+  if (p === "/api/camera" && m === "GET") return send(res, 200, { enabled: !!(await fsp.stat(CAM_SOCK).catch(() => null)) });
+  if (p.startsWith("/api/camera/")) return cameraRoutes(req, res, p, m, url);
   if (p === "/api/update" || p === "/api/update/install") return updateRoutes(req, res, p, m, url);
   if (p === "/api/clips" || p.startsWith("/api/clips/")) return clipRoutes(req, res, p, m, url);
   if (p === "/api/music" || p.startsWith("/api/music/")) return musicRoutes(req, res, p, m);
