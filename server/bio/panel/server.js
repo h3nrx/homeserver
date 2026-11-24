@@ -1094,12 +1094,17 @@ const TYPE_EXT = { "image/jpeg": "jpg", "image/png": "png", "image/heic": "heic"
   "application/pdf": "pdf", "application/zip": "zip", "text/plain": "txt", "application/json": "json", "text/csv": "csv" };
 // What a file really is, from its first bytes. Used when a name has no
 // extension (iPhone photos arrive as "IMG_1234").
-const HAS_EXT = /\.[A-Za-z0-9]{1,8}$/;
+// "v1.2" or "21.49" at the end of a name is not an extension: it needs a letter.
+const HAS_EXT = /\.(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{1,8}$/;
 async function sniffExt(file) {
-  let b;
+  let b, tail;
   const fh = await fsp.open(file, "r");
-  try { b = Buffer.alloc(4096); const { bytesRead } = await fh.read(b, 0, 4096, 0); b = b.subarray(0, bytesRead); }
-  finally { await fh.close(); }
+  try {
+    const { size } = await fh.stat();
+    const part = async (len, pos) => { const x = Buffer.alloc(len); const { bytesRead } = await fh.read(x, 0, len, pos); return x.subarray(0, bytesRead); };
+    b = await part(8192, 0);
+    tail = await part(65536, Math.max(0, size - 65536));   // zip keeps its file list at the end
+  } finally { await fh.close(); }
   const at = (o, str) => b.length >= o + str.length && b.toString("latin1", o, o + str.length) === str;
   if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return "jpg";
   if (at(0, "\x89PNG")) return "png";
@@ -1115,24 +1120,38 @@ async function sniffExt(file) {
     return "mp4";
   }
   if (at(0, "PK\x03\x04")) {
-    const head = b.toString("latin1");
-    return head.includes("ppt/") ? "pptx" : head.includes("word/") ? "docx" : head.includes("xl/") ? "xlsx" : "zip";
+    const list = b.toString("latin1") + tail.toString("latin1");
+    const od = /application\/vnd\.oasis\.opendocument\.(text|spreadsheet|presentation)/.exec(list);
+    if (od) return { text: "odt", spreadsheet: "ods", presentation: "odp" }[od[1]];
+    if (list.includes("application/epub+zip")) return "epub";
+    if (!list.includes("[Content_Types].xml")) return "zip";
+    return list.includes("ppt/") ? "pptx" : list.includes("word/") ? "docx" : list.includes("xl/") ? "xlsx" : "zip";
   }
-  if (at(0, "ID3") || (b[0] === 0xff && (b[1] & 0xe0) === 0xe0)) return "mp3";
+  if (at(0, "\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1")) {   // Office before 2007
+    const all = Buffer.concat([b, tail]), has = (t) => all.includes(Buffer.from(t, "utf16le"));
+    return has("PowerPoint Document") ? "ppt" : has("Workbook") ? "xls" : has("WordDocument") ? "doc" : "";
+  }
+  if (at(0, "{\\rtf")) return "rtf";
+  if (at(0, "ID3") || (b[0] === 0xff && (b[1] & 0xe6) === 0xe2)) return "mp3";
   if (at(0, "fLaC")) return "flac";
   if (at(0, "OggS")) return "ogg";
   if (at(0, "Rar!")) return "rar";
   if (at(0, "7z\xbc\xaf")) return "7z";
   return "";
 }
-// Files that came in without an extension get the right one (renamed on disk
-// and in the index). Runs when the file list loads, so old uploads get fixed too.
+// Files that came in without an extension, or as .txt from the shortcut though
+// they're something else, get the right one (renamed on disk and in the index).
+// Runs when the file list loads, so old uploads get fixed too.
+const withExt = (name, ext) => `${name.replace(/\.(txt|bin|dat)$/i, "")}.${ext}`;
+const extChecked = new Set();
 async function fixExtensions() {
-  const todo = await withIndex((idx) => Object.entries(idx).filter(([, e]) => e && e.name && !HAS_EXT.test(e.name)).map(([id, e]) => [id, e.name]));
+  const todo = await withIndex((idx) => Object.entries(idx)
+    .filter(([id, e]) => e && e.name && !extChecked.has(id + e.name) && (!HAS_EXT.test(e.name) || (e.from === "key" && /\.txt$/i.test(e.name))))
+    .map(([id, e]) => [id, e.name]));
   if (!todo.length) return;
   const found = [];
   for (const [id, name] of todo) {
-    try { const ext = await sniffExt(path.join(FILES_DIR, id, name)); if (ext) found.push([id, name, ext]); } catch {}
+    try { const ext = await sniffExt(path.join(FILES_DIR, id, name)); extChecked.add(id + name); if (ext) found.push([id, name, ext]); } catch {}
   }
   if (!found.length) return;
   await withIndex(async (idx, save) => {
@@ -1140,7 +1159,7 @@ async function fixExtensions() {
     for (const [id, name, ext] of found) {
       const e = idx[id];
       if (!e || e.name !== name) continue;
-      const next = `${name}.${ext}`;
+      const next = withExt(name, ext);
       try { await fsp.rename(path.join(FILES_DIR, id, name), path.join(FILES_DIR, id, next)); } catch { continue; }
       e.name = next;
       changed = true;
@@ -1168,12 +1187,11 @@ async function keyUpload(req, res, url) {
   let rawName = url.searchParams.get("name") || "";
   if (!rawName && req.headers["x-name"]) rawName = Buffer.from(String(req.headers["x-name"]), "latin1").toString("utf8");
   const type = String(req.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
-  if (type === "multipart/form-data" || type === "application/x-www-form-urlencoded" || type === "application/json") {
+  if (type === "multipart/form-data" || type === "application/x-www-form-urlencoded" || (type === "application/json" && !/\.json$/i.test(rawName))) {
     fail(400, "In the shortcut, set the request body (Haupttext) to File (Datei), not Form or JSON.");
   }
   const ext = TYPE_EXT[type] || "";
   let name = cleanFileName(rawName, `upload-${new Date().toISOString().slice(0, 16).replace(/[T:]/g, "-")}`);
-  if (!HAS_EXT.test(name) && ext) name += `.${ext}`;
   const declared = +(req.headers["content-length"] || 0);
   if (declared > MAX_UPLOAD_BYTES) fail(413, "Files can be up to 2 GB.");
   await ensureRoom(declared);
@@ -1183,9 +1201,12 @@ async function keyUpload(req, res, url) {
   try { size = await streamTo(req, path.join(dir, name), MAX_UPLOAD_BYTES); }
   catch (e) { await fsp.rm(dir, { recursive: true, force: true }); throw e; }
   if (!size) { await fsp.rm(dir, { recursive: true, force: true }); fail(400, "The file was empty."); }
-  if (!HAS_EXT.test(name)) {
-    const found = await sniffExt(path.join(dir, name)).catch(() => "");
-    if (found) { await fsp.rename(path.join(dir, name), path.join(dir, `${name}.${found}`)); name = `${name}.${found}`; }
+  // the content decides; what the phone says only counts when that's unclear
+  // (Shortcuts likes to call everything text/plain)
+  if (!HAS_EXT.test(name) || /\.(txt|bin|dat)$/i.test(name)) {
+    const found = (await sniffExt(path.join(dir, name)).catch(() => "")) || (HAS_EXT.test(name) ? "" : ext);
+    const next = found ? withExt(name, found) : name;
+    if (next !== name) { await fsp.rename(path.join(dir, name), path.join(dir, next)); name = next; }
   }
   await withIndex(async (idx, save) => { idx[id] = { name, size, uploaded: Date.now(), folder: "sys-uploads", from: "key", shared: true }; await save(); });
   key.used = Date.now(); key.uses = (key.uses || 0) + 1;

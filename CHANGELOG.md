@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.2
+
+Fix: Word-Dateien vom iPhone-Kurzbefehl wurden zu .txt.
+
+- Der Server schaut jetzt zuerst in die Datei und erkennt Word, Excel, PowerPoint (auch alte Formate), OpenDocument, RTF, PDF, Bilder und Videos. Die Typangabe vom Handy zählt nur noch, wenn der Inhalt unklar ist.
+- Falsch als .txt gespeicherte Kurzbefehl-Uploads werden beim Öffnen vom File Host umbenannt. Ihr Link ändert sich dadurch. Hat das iPhone nur reinen Text geschickt, ist das Original nicht dabei: dann neu hochladen.
+- Namen wie „Bericht v1.2“ bekommen jetzt auch eine Endung.
+- Echte .json-Dateien lassen sich wieder hochladen (ging seit 1.2.1 nicht), und bestimmte Textdateien werden nicht mehr für MP3 gehalten.
+
 ## 1.2.1
 
 Fix für Uploads vom iPhone.
