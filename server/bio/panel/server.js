@@ -1208,12 +1208,12 @@ async function keyUpload(req, res, url) {
     const next = found ? withExt(name, found) : name;
     if (next !== name) { await fsp.rename(path.join(dir, name), path.join(dir, next)); name = next; }
   }
-  await withIndex(async (idx, save) => { idx[id] = { name, size, uploaded: Date.now(), folder: "sys-uploads", from: "key", shared: true }; await save(); });
+  await withIndex(async (idx, save) => { idx[id] = { name, size, uploaded: Date.now(), folder: "sys-uploads", from: "key", shared: false }; await save(); });
   key.used = Date.now(); key.uses = (key.uses || 0) + 1;
   await writeKeys(keys).catch(() => {});
-  const link = `https://${req.headers.host}/f/${id}/${encodeURIComponent(name)}`;
+  // private like every other upload: a link is only made in the File Host
   res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
-  res.end(link);
+  res.end(`${name} ✓`);
 }
 
 async function fileRoutes(req, res, p, m, url) {
@@ -2393,7 +2393,7 @@ const UPDATE_REPO = "__REPO__";
 const REPO_RE = /^[A-Za-z0-9_.-]{1,64}\/[A-Za-z0-9_.-]{1,100}$/;
 const TAG_RE = /^v\d{1,3}\.\d{1,3}\.\d{1,3}$/;
 const IPC_UPDATE = path.join(IPC_DIR, "update.json");
-const release = { at: 0, data: null, error: null, busy: null };
+const release = { at: 0, data: null, error: null, busy: null, key: false };
 
 async function currentVersion() {
   try { return (await fsp.readFile(path.join(__dirname, "VERSION"), "utf8")).trim(); }
@@ -2411,14 +2411,15 @@ function newer(a, b) {
 }
 async function fetchRelease() {
   if (!REPO_RE.test(UPDATE_REPO)) throw new Error("No update source is set up for this server.");
-  const r = await fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`, {
-    signal: AbortSignal.timeout(10000),
-    headers: { "User-Agent": "__SLUG__-panel/1.0", Accept: "application/vnd.github+json" },
-  });
-  if (r.status === 404) return null;   // no release published yet
-  if (r.status === 403 || r.status === 429) throw new Error("GitHub is rate-limiting update checks. Try again in a few minutes.");
-  if (!r.ok) throw new Error(`GitHub answered ${r.status}.`);
-  const j = await r.json();
+  // asked by the host agent: an access key for a private repo stays with root
+  // and never reaches this container again after it was saved
+  const { status, key, release: j } = await agent("update_release", {}, { timeout: 25000 });
+  release.key = !!key;
+  if (status === 401 || (status === 404 && key)) throw new Error("GitHub doesn't accept the access key (expired or wrong repository).");
+  if (status === 404) throw new Error("No releases found. If the repository is private, add an access key below.");
+  if (status === 403 || status === 429) throw new Error("GitHub is rate-limiting update checks. Try again in a few minutes.");
+  if (status === 0) throw new Error("GitHub didn't answer in time.");
+  if (status !== 200 || !j) throw new Error(`GitHub answered ${status}.`);
   if (!TAG_RE.test(j.tag_name || "")) return null;
   return {
     tag: j.tag_name,
@@ -2453,11 +2454,19 @@ async function updateInfo(force) {
     available: !!(rel.data && newer(rel.data.tag, current)),
     checked: rel.at || null,
     error: rel.error,
+    key: rel.key,
     status,
   };
 }
 async function updateRoutes(req, res, p, m, url) {
   if (p === "/api/update" && m === "GET") return send(res, 200, await updateInfo(url.searchParams.get("refresh") === "1"));
+  if (p === "/api/update/key" && m === "PUT") {
+    const { key } = await readJson(req);
+    if (typeof key !== "string" || (key && !/^github_pat_[A-Za-z0-9_]{20,240}$/.test(key))) fail(400, "That isn't a fine-grained GitHub key (it starts with github_pat_).");
+    await agent("update_key", { key }, { timeout: 25000 });
+    release.at = 0;
+    return send(res, 200, await updateInfo(true));
+  }
   if (p === "/api/update/install" && m === "POST") {
     const { tag } = await readJson(req);
     if (typeof tag !== "string" || !TAG_RE.test(tag)) fail(400, "Invalid version.");
@@ -2979,7 +2988,7 @@ async function route(req, res) {
   if (p === "/api/power") return powerRoutes(req, res, p, m);
   if (p === "/api/camera" && m === "GET") return send(res, 200, { enabled: !!(await fsp.stat(CAM_SOCK).catch(() => null)) });
   if (p.startsWith("/api/camera/")) return cameraRoutes(req, res, p, m, url);
-  if (p === "/api/update" || p === "/api/update/install") return updateRoutes(req, res, p, m, url);
+  if (p === "/api/update" || p === "/api/update/install" || p === "/api/update/key") return updateRoutes(req, res, p, m, url);
   if (p === "/api/clips" || p.startsWith("/api/clips/")) return clipRoutes(req, res, p, m, url);
   if (p === "/api/music" || p.startsWith("/api/music/")) return musicRoutes(req, res, p, m);
   if (p === "/api/downloads" || p.startsWith("/api/downloads/")) return downloadRoutes(req, res, p, m);

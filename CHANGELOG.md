@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.0
+
+Kurzbefehl-Uploads sind jetzt privat, und Updates klappen auch aus einem privaten Repository.
+
+- Was per iPhone-Kurzbefehl hochgeladen wird, bekommt keinen Link mehr. Einen Link gibt es erst, wenn man ihn im File Host erstellt. Der Kurzbefehl bekommt nur noch den Dateinamen zurück. Links von früher bleiben, bis man sie entfernt.
+- Updates: Unter „Privates Repository“ lässt sich ein GitHub-Schlüssel eintragen, der nur lesen darf. Er liegt nur für root lesbar auf dem Server.
+
 ## 1.3.0
 
 Neu: Kamera-Tab (standardmäßig aus).

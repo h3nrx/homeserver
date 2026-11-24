@@ -89,8 +89,18 @@ fail_early() { echo "ABBRUCH: $1"; status failed "$1"; [ "$MODE" = release ] && 
 step download
 if [ "$MODE" = release ]; then
   rm -rf "$WORK"; mkdir -p "$WORK/src"
-  curl -fsSL --retry 3 --max-time 600 "https://codeload.github.com/$REPO/tar.gz/refs/tags/$TAG" -o "$WORK/src.tgz" \
-    || fail_early "Download von GitHub hat nicht geklappt."
+  KEY="$(tr -d ' \r\n' < "$VAR/github.token" 2>/dev/null || true)"
+  if [[ $KEY =~ ^github_pat_[A-Za-z0-9_]+$ ]]; then
+    # privates Repo: der Schluessel steht nie in der Prozessliste, und curl
+    # schickt ihn bei der Weiterleitung nicht an andere Server mit
+    curl -fsSL --retry 3 --max-time 600 -H @<(printf 'Authorization: Bearer %s\n' "$KEY") \
+      "https://api.github.com/repos/$REPO/tarball/$TAG" -o "$WORK/src.tgz" \
+      || fail_early "Download von GitHub hat nicht geklappt (Zugangsschluessel abgelaufen?)."
+  else
+    curl -fsSL --retry 3 --max-time 600 "https://codeload.github.com/$REPO/tar.gz/refs/tags/$TAG" -o "$WORK/src.tgz" \
+      || fail_early "Download von GitHub hat nicht geklappt."
+  fi
+  unset KEY
   tar -xzf "$WORK/src.tgz" -C "$WORK/src" --strip-components=1 --no-same-owner --no-same-permissions \
     || fail_early "Das Paket ist kaputt."
   SRC="$WORK/src"

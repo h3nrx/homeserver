@@ -556,6 +556,73 @@ def update_install(p) -> dict:
     return {"state": "starting", "to": tag}
 
 
+# Updates may come from a private repo. The read-only key is only readable by
+# root and is never handed back to the panel.
+UPDATE_REPO = "__REPO__"
+UPDATE_KEY = Path("/var/lib/homeserver/github.token")
+UPDATE_KEY_RE = re.compile(r"github_pat_[A-Za-z0-9_]{20,240}")
+
+
+def read_update_key() -> str:
+    try:
+        key = UPDATE_KEY.read_text(encoding="ascii").strip()
+    except (OSError, ValueError):
+        return ""
+    return key if UPDATE_KEY_RE.fullmatch(key) else ""
+
+
+def github_latest(key: str) -> tuple[int, dict | None]:
+    import urllib.error
+    import urllib.request
+
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *a, **k):   # would send the key along
+            return None
+
+    headers = {"User-Agent": "homeserver-updater", "Accept": "application/vnd.github+json"}
+    if key:
+        headers["Authorization"] = f"Bearer {key}"
+    req = urllib.request.Request(f"https://api.github.com/repos/{UPDATE_REPO}/releases/latest", headers=headers)
+    try:
+        with urllib.request.build_opener(NoRedirect).open(req, timeout=12) as r:
+            d = json.loads(r.read(2_000_000))
+    except urllib.error.HTTPError as e:
+        return e.code, None
+    except (OSError, ValueError):
+        return 0, None
+    return 200, {k: d.get(k) for k in ("tag_name", "name", "body", "published_at", "html_url")}
+
+
+def update_release(p) -> dict:
+    key = read_update_key()
+    status, rel = github_latest(key)
+    return {"status": status, "key": bool(key), "release": rel}
+
+
+def update_key(p) -> dict:
+    key = p.get("key")
+    if key == "":
+        UPDATE_KEY.unlink(missing_ok=True)
+        log("update: access key removed")
+        return {"key": False}
+    if not isinstance(key, str) or not UPDATE_KEY_RE.fullmatch(key):
+        raise ValueError("That isn't a fine-grained GitHub key (it starts with github_pat_).")
+    status, _ = github_latest(key)
+    if status == 0:
+        raise ValueError("GitHub didn't answer in time.")
+    if status != 200:
+        raise ValueError("GitHub doesn't accept this key for the repository. Check the repository and the permission Contents: Read-only.")
+    UPDATE_KEY.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+    tmp = UPDATE_KEY.with_name("github.token.tmp")
+    tmp.unlink(missing_ok=True)
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(key + "\n")
+    tmp.replace(UPDATE_KEY)
+    log("update: access key saved")
+    return {"key": True}
+
+
 # -------------------------------- commands -------------------------------
 HANDLERS = {
     "mc_status": mc_status,
@@ -564,6 +631,8 @@ HANDLERS = {
     "mc_restart": mc_restart,
     "power": power,
     "update_install": update_install,
+    "update_release": update_release,
+    "update_key": update_key,
     "bot_list": bot_list,
     "bot_info": bot_info,
     "bot_create": bot_create,
