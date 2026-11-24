@@ -184,6 +184,58 @@ def controls(dev: str, name: str = "", value: int = 0) -> list[dict]:
         os.close(fd)
 
 
+class Smooth:
+    """Keeps the frame rate up in dim light. Auto exposure of some cameras
+    halves it there; when that happens the camera's own default exposure time
+    is used instead (a bit darker). Looks again at the light now and then."""
+    AUTO, MANUAL, AGAIN = 3, 1, 300.0
+    MODE, TIME = 0x9A0901, 0x9A0902
+
+    def __init__(self, fd: int):
+        self.fd = fd
+        r = ctrl_range(fd, self.TIME)
+        self.time = r[3] if r and self.put(self.MODE, self.AUTO) else 0
+        self.phase = "auto" if self.time else "off"
+        self.start()
+
+    def put(self, cid: int, value: int) -> bool:
+        try:
+            fcntl.ioctl(self.fd, S_CTRL, bytearray(struct.pack("<Ii", cid, value)))
+            return True
+        except OSError:
+            return False
+
+    def start(self) -> None:
+        self.t0, self.n, self.from_ = time.monotonic(), 0, 0.0
+
+    def frame(self) -> None:
+        if self.phase == "off":
+            return
+        now = time.monotonic()
+        if self.phase in ("slow", "good"):
+            if now - self.t0 > self.AGAIN:
+                self.put(self.MODE, self.AUTO)
+                self.phase = "auto"
+                self.start()
+            return
+        if now - self.t0 < 1.5:       # settling
+            return
+        if not self.from_:
+            self.from_ = now
+            return
+        self.n += 1
+        if now - self.from_ < 1.5:
+            return
+        fast = self.n / (now - self.from_) > 0.75 * FPS
+        if self.phase == "auto" and not fast and self.put(self.MODE, self.MANUAL) and self.put(self.TIME, self.time):
+            self.phase = "try"
+        else:
+            if self.phase == "try" and not fast:   # didn't help: back to auto
+                self.put(self.MODE, self.AUTO)
+            self.phase = "good" if fast else "slow"
+        self.start()
+
+
 class Cam:
     def __init__(self, dev: str):
         self.dev = dev
@@ -241,6 +293,7 @@ class Cam:
         fd = os.open(f"/dev/{self.dev}", os.O_RDWR | os.O_NONBLOCK)
         maps: list[mmap.mmap] = []
         on = False
+        smooth = None
         kind = bytearray(struct.pack("<i", CAPTURE))
         try:
             for cid, value in PRESET:
@@ -272,6 +325,7 @@ class Cam:
                 fcntl.ioctl(fd, QBUF, self.buf(n))
             fcntl.ioctl(fd, STREAMON, kind)
             on = True
+            smooth = Smooth(fd)
             misses = 0
             poll = select.poll()
             poll.register(fd, select.POLLIN)
@@ -291,6 +345,7 @@ class Cam:
                     continue
                 n, _, used, flags = struct.unpack_from("<IIII", b, 0)
                 misses = 0
+                smooth.frame()
                 pic = complete_jpeg(bytes(maps[n][:used])) if not flags & BUF_ERROR else None
                 fcntl.ioctl(fd, QBUF, self.buf(n))
                 if pic:
@@ -299,6 +354,8 @@ class Cam:
                         self.jpeg = pic
                         self.cond.notify_all()
         finally:
+            if smooth:
+                smooth.put(Smooth.MODE, Smooth.AUTO)
             if on:
                 try:
                     fcntl.ioctl(fd, STREAMOFF, kind)

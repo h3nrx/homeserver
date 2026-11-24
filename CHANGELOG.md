@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.1
+
+Kamera: 30 Bilder/s auch bei wenig Licht.
+
+- Manche Kameras halbieren bei wenig Licht ihre Bilder/s, weil die Automatik länger belichtet. Das wird jetzt erkannt und die Belichtung nach ein paar Sekunden festgestellt (das Bild wird etwas dunkler).
+- Alle 5 Minuten wird das Licht kurz neu geprüft, dabei kann es 3–4 Sekunden ruckeln.
+
 ## 1.5.0
 
 Kamera flüssig: bis zu 30 Bilder/s.
