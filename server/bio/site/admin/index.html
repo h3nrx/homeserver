@@ -5616,7 +5616,7 @@ function renderUpdates() {
   const l = d.latest, cur = d.current ? `v${d.current.replace(/^v/, "")}` : "";
   const when = d.checked ? `Checked ${ago(d.checked)}` : "Not checked yet";
   const [orb, mark, title, sub] = d.available
-    ? ["pulse", "update", l.name && l.name !== l.tag ? l.name : "Update available", `${l.tag}${l.published ? ` · ${ago(Date.parse(l.published))}` : ""}`]
+    ? ["pulse", "update", (l.name || "").replace(l.tag, "").replace(/^[\s\-–—·:]+/, "") || "Update available", `${l.tag}${l.published ? ` · ${ago(Date.parse(l.published))}` : ""}`]
     : d.error && !l ? ["bad", "update", "Couldn't check for updates", d.error]
     : !l ? ["", "check", "No releases yet", when]
     : ["ok", "check", "You're up to date", when];
