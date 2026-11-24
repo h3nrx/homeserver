@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.7.0
+
+Neue öffentliche Startseite: Höhenlinien statt Laptop.
+
+- Feine Linien auf Schwarz, die ganz langsam wandern und sich bei Maus oder Finger leicht heben.
+- Name unten links, Uhrzeit unten rechts. Spielt jemand Minecraft, steht das klein darüber.
+- Neues Vorschaubild, wenn man den Link verschickt.
+
 ## 1.6.0
 
 Neue Bento-Startseite im Admin, und Panels lassen sich endlich richtig anordnen.

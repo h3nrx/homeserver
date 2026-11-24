@@ -2,914 +2,122 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>__BRAND__</title>
-<meta name="description" content="a laptop in the corner of a room">
-<meta name="theme-color" content="#050609">
+<meta name="description" content="__BRAND__">
+<meta name="theme-color" content="#0a0a0b">
 <link rel="icon" type="image/png" href="img/__ICON__-logo-64.png">
 <link rel="apple-touch-icon" href="img/__ICON__-logo-192.png">
 <meta property="og:title" content="__BRAND__">
-<meta property="og:description" content="a laptop in the corner of a room">
-<meta property="og:image" content="__PUBLIC_URL__/img/og.jpg">
+<meta property="og:image" content="__PUBLIC_URL__/img/og.jpg?v=2">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="preload" href="fonts/geist.woff2" as="font" type="font/woff2" crossorigin>
 <style>
   @font-face { font-family: "Geist"; src: url("fonts/geist.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
-  @font-face { font-family: "JetBrains Mono"; src: url("fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 300 800; font-display: swap; }
-
-  /* The whole page is one object: the laptop this site is served from.
-     Every length hangs off --w (the laptop's width), so it scales as one piece. */
-  :root {
-    --w: min(70vw, 780px, 60vh);
-    --d: calc(var(--w) * .64);          /* base depth */
-    --h: calc(var(--w) * .63);          /* lid height */
-    --t: calc(var(--w) * .024);         /* base thickness */
-    --acc: #7c8cff; --acc2: #36e0c2;
-    --wall: radial-gradient(90% 90% at 15% 0%, #2b3270, transparent 70%), radial-gradient(70% 80% at 100% 20%, #0f5a4f, transparent 70%), #070a12;
-    --ease: cubic-bezier(.2, .8, .2, 1);
-  }
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { height: 100%; margin: 0; overflow: hidden; }
-  body {
-    background: #050609; color: #fff; overflow: hidden;
-    font-family: "Geist", "Segoe UI", system-ui, sans-serif; letter-spacing: -.01em;
-    touch-action: none; user-select: none; -webkit-user-select: none;
-  }
-  [hidden] { display: none !important; }
-  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
-
-  /* the room: one lamp from above, colored by the screen once it's on */
-  #room { position: fixed; inset: 0; pointer-events: none; background: var(--air, #050609); transition: background 1.2s ease; }
-  #room::before { content: ""; position: absolute; inset: 0; opacity: 0; transition: opacity .7s ease;
-    background: radial-gradient(46% 52% at 36% 30%, rgb(255 176 96 / .16), transparent 72%); }
-  body.lamp-on #room::before { opacity: 1; }
-  #room::after { content: ""; position: absolute; inset: 0; opacity: 0; transition: opacity 1.6s ease .3s;
-    background: radial-gradient(52% 40% at 50% 40%, color-mix(in srgb, var(--acc) 26%, transparent), transparent 72%); }
-  body[data-s="on"] #room::after, body[data-s="boot"] #room::after { opacity: 1; }
-
-  /* #view clips the scene, so zooming in can never widen the page */
-  #view { position: fixed; inset: 0; overflow: hidden; contain: strict; }
-  #stage { transform-origin: 0 0; }   /* the zoom maths assume the top-left corner */
-  #stage { position: absolute; inset: 0; display: grid; place-items: center; perspective: calc(var(--w) * 2.4); perspective-origin: 50% 38%; cursor: grab; }
-  #stage.drag { cursor: grabbing; }
-  #stage { outline: none; }
-  .rig, .laptop, .base, .lid, .flies, .fly, .fly i, .tbl, .props, .o { transform-style: preserve-3d; }
-  .dolly { transform-style: preserve-3d; transition: transform 1.4s var(--ease); }
-  body[data-s="closed"] .dolly { transform: scale(1.02); }
-  .rig { width: 0; height: 0; transform: translateY(calc(var(--w) * .27)) rotateX(-24deg) rotateY(-16deg); }
-  .laptop { position: absolute; left: 0; top: 0; transform: translateZ(calc(var(--d) * -.5)); }
-
-  /* ---------- base ---------- */
-  .base { position: absolute; left: calc(var(--w) * -.5); top: 0; width: var(--w); height: var(--d);
-    transform-origin: 50% 0; transform: rotateX(90deg); }
-  .deck { position: absolute; inset: 0; border-radius: calc(var(--w) * .012) calc(var(--w) * .012) calc(var(--w) * .03) calc(var(--w) * .03);
-    background: linear-gradient(180deg, #353945, #23262f 55%, #1c1e26); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .07); overflow: hidden; }
-  /* light falling from the screen onto the keyboard */
-  .deck::after { content: ""; position: absolute; inset: 0; opacity: 0; transition: opacity 1.2s ease .5s; pointer-events: none;
-    background: linear-gradient(180deg, color-mix(in srgb, var(--acc) 34%, transparent), transparent 62%); mix-blend-mode: screen; }
-  body:not([data-s="closed"]) .deck::after { opacity: 1; }
-  .lip { position: absolute; background: linear-gradient(180deg, #2a2d37, #121318); }
-  .lip.f { left: 0; top: 100%; width: 100%; height: var(--t); transform-origin: 50% 0; transform: rotateX(-90deg); border-radius: 0 0 calc(var(--w) * .02) calc(var(--w) * .02); }
-  .lip.b { left: 0; top: 0; width: 100%; height: var(--t); transform-origin: 50% 0; transform: rotateX(-90deg) rotateY(180deg) translateY(0); }
-  .lip.l { left: 0; top: 0; width: var(--t); height: 100%; transform-origin: 0 50%; transform: rotateY(90deg); }
-  .lip.r { right: 0; top: 0; width: var(--t); height: 100%; transform-origin: 100% 50%; transform: rotateY(-90deg); }
-  .shadow { position: absolute; left: -9%; top: -6%; width: 118%; height: 120%; transform: translateZ(calc(var(--t) * -1.05));
-    background: radial-gradient(closest-side, rgb(0 0 0 / .75), transparent); filter: blur(calc(var(--w) * .02)); }
-
-  .grille { position: absolute; left: 6%; top: 3.4%; width: 26%; height: 2.6%; opacity: .5;
-    background: radial-gradient(circle, #000 38%, transparent 42%) 0 0 / calc(var(--w) * .009) calc(var(--w) * .009); }
-
-  #keys { position: absolute; left: 4.5%; right: 4.5%; top: 7.5%; height: 52%; display: flex; flex-direction: column; gap: 2.2%; }
-  .row { flex: 1; display: flex; gap: .55%; }
-  .row.fn { flex: .6; }
-  .key.w { font-size: calc(var(--w) * .0095); letter-spacing: .02em; }
-  .ud { flex: var(--u, 1) 1 0; min-width: 0; display: flex; flex-direction: column; gap: 6%; }
-  .ud .key { flex: 1; font-size: calc(var(--w) * .009); }
-  .key { flex: var(--u, 1) 1 0; min-width: 0; display: grid; place-items: center; border-radius: calc(var(--w) * .006);
-    background: #0b0c10; box-shadow: inset 0 calc(var(--w) * -.002) 0 rgb(0 0 0 / .7), inset 0 0 0 1px rgb(255 255 255 / .07);
-    color: rgb(255 255 255 / .34); font: 500 calc(var(--w) * .0125)/1 "Geist", sans-serif; text-transform: uppercase;
-    transition: background .9s ease, color .9s ease, box-shadow .9s ease; }
-  body:not([data-s="closed"]) .key { color: color-mix(in srgb, var(--acc) 55%, #fff 20%); box-shadow: inset 0 calc(var(--w) * -.002) 0 rgb(0 0 0 / .7), inset 0 0 0 1px color-mix(in srgb, var(--acc) 30%, transparent); }
-  .key.lit { background: var(--acc); color: #fff; box-shadow: 0 0 calc(var(--w) * .02) var(--acc); transition-duration: 0s; }
-  #pad { position: absolute; left: 33%; width: 34%; top: 62%; height: 30%; border-radius: calc(var(--w) * .01);
-    background: linear-gradient(180deg, #23252d, #1b1d23); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .07); overflow: hidden; }
-  #pad i { position: absolute; width: 10px; height: 10px; margin: -5px; border-radius: 50%; border: 1px solid var(--acc); opacity: 0; animation: ring .7s var(--ease); }
-  @keyframes ring { from { opacity: .9; transform: scale(.4); } to { opacity: 0; transform: scale(calc(var(--w) / 90px)); } }
-
-
-  /* ---------- the room: table, wall, window with the real sky, pendant lamp ----------
-     Everything hangs in the base's plane (local z = up), so it turns with the laptop. */
-  .tbl { position: absolute; left: calc(var(--w) * -.9); top: calc(var(--w) * -.72); width: calc(var(--w) * 2.8); height: calc(var(--w) * 1.72);
-    transform: translateZ(calc(var(--t) * -1.15)); pointer-events: none; }
-  /* everything that's lit by the room gets darker at night */
-  .tbl-top, .tbl-lip, .rwall::before, .lit, .mat { filter: brightness(var(--lum, .5)); transition: filter 1s ease; }
-  /* a solid oak desk */
-  .tbl-top { position: absolute; inset: 0; border-radius: calc(var(--w) * .012);
-    background:
-      repeating-linear-gradient(90deg, transparent 0 calc(var(--w) * .93), rgb(0 0 0 / .28) calc(var(--w) * .93) calc(var(--w) * .934)),
-      repeating-linear-gradient(91.2deg, rgb(255 255 255 / .035) 0 3px, transparent 3px 9px, rgb(0 0 0 / .05) 9px 10px, transparent 10px 23px),
-      repeating-linear-gradient(88.6deg, rgb(70 40 15 / .12) 0 1px, transparent 1px 41px),
-      radial-gradient(120% 60% at 30% 40%, rgb(255 220 170 / .12), transparent 70%),
-      linear-gradient(180deg, #8d6545, #a47652 45%, #94694a); }
-  .tbl-lip { position: absolute; left: 0; top: 100%; width: 100%; height: calc(var(--w) * .075); transform-origin: 50% 0; transform: rotateX(-90deg);
-    background: linear-gradient(180deg, #b07f5a 0 6%, #7a5236 14%, #5e3e28); border-radius: 0 0 calc(var(--w) * .008) calc(var(--w) * .008); }
-  /* daylight from the window lying across the desk */
-  .sun { position: absolute; left: 57%; top: 1%; width: calc(var(--w) * .82); height: calc(var(--w) * 1.05); transform-origin: 50% 0; transform: translateZ(.4px) skewX(-24deg);
-    background: linear-gradient(180deg, var(--ray, rgb(255 232 190 / .34)), transparent 92%); opacity: var(--rays, 0); transition: opacity 1.2s ease;
-    -webkit-mask: linear-gradient(90deg, #000 47%, transparent 47% 53%, #000 53%), linear-gradient(#000 46%, transparent 46% 54%, #000 54%); -webkit-mask-composite: source-in;
-    mask: linear-gradient(90deg, #000 47%, transparent 47% 53%, #000 53%) intersect, linear-gradient(#000 46%, transparent 46% 54%, #000 54%); }
-  /* warm light from the desk lamp */
-  .pool { position: absolute; left: calc(var(--w) * -.02); top: calc(var(--w) * .1); width: calc(var(--w) * 1.25); height: calc(var(--w) * 1.05); transform: translateZ(.7px);
-    background: radial-gradient(closest-side, rgb(255 196 120 / .5), rgb(255 186 110 / .16) 55%, transparent); opacity: 0; transition: opacity .5s ease; }
-  body.lamp-on .pool { opacity: 1; }
-  .deck::before { content: ""; position: absolute; inset: 0; opacity: 0; transition: opacity .5s ease; pointer-events: none;
-    background: radial-gradient(90% 130% at 0% 0%, rgb(255 186 106 / .22), transparent 70%); }
-  body.lamp-on .deck::before { opacity: 1; }
-  /* felt desk mat under the laptop */
-  .mat { position: absolute; left: calc(var(--w) * .68); top: calc(var(--w) * .58); width: calc(var(--w) * 1.44); height: calc(var(--w) * .92); transform: translateZ(.2px);
-    border-radius: calc(var(--w) * .03); background: radial-gradient(120% 90% at 50% 40%, #3a3d46, #2b2d34); box-shadow: inset 0 0 0 calc(var(--w) * .004) #24262c, 0 0 0 1px rgb(0 0 0 / .25); }
-  .mat::after { content: ""; position: absolute; inset: calc(var(--w) * .014); border-radius: calc(var(--w) * .02); border: 1px dashed rgb(255 255 255 / .16); }
-
-  /* the wall behind the desk */
-  .rwall { position: absolute; left: 0; top: calc(var(--w) * -1.5); width: 100%; height: calc(var(--w) * 1.5); transform-origin: 50% 100%; transform: rotateX(-90deg);
-    backface-visibility: hidden; -webkit-backface-visibility: hidden; transform-style: preserve-3d; }
-  .rwall::before { content: ""; position: absolute; inset: 0; border-radius: calc(var(--w) * .012) calc(var(--w) * .012) 0 0;
-    background: linear-gradient(0deg, rgb(0 0 0 / .4), transparent 6%), radial-gradient(70% 60% at 40% 45%, rgb(255 255 255 / .07), transparent),
-      repeating-linear-gradient(0deg, rgb(0 0 0 / .02) 0 2px, transparent 2px 5px), linear-gradient(180deg, #7f786d, #8b8478 60%, #847d71); }
-  .wglow { position: absolute; left: 0; top: 18%; width: 40%; height: 82%; opacity: 0; transition: opacity .5s ease;
-    background: radial-gradient(closest-side at 50% 60%, rgb(255 190 110 / .34), transparent); }
-  body.lamp-on .wglow { opacity: 1; }
-  /* the window: painted wooden frame, a deep reveal, the real sky */
-  .wtrim { position: absolute; left: 57.2%; bottom: calc(var(--w) * .335); width: calc(var(--w) * .9); height: calc(var(--w) * .86); border-radius: calc(var(--w) * .006);
-    background: var(--frame, #8a8478); box-shadow: 0 calc(var(--w) * .014) calc(var(--w) * .03) rgb(0 0 0 / .35); transition: background 1s ease; }
-  .win { position: absolute; left: 58.2%; bottom: calc(var(--w) * .365); width: calc(var(--w) * .82); height: calc(var(--w) * .8); overflow: hidden; transform: translateZ(.3px);
-    border: calc(var(--w) * .014) solid var(--frame, #8a8478); border-radius: calc(var(--w) * .004);
-    box-shadow: inset 0 0 calc(var(--w) * .03) rgb(0 0 0 / .45), 0 0 calc(var(--w) * .25) var(--halo, transparent); transition: border-color 1s ease; }
-  .win::before, .win::after { content: ""; position: absolute; z-index: 2; background: var(--frame, #8a8478); transition: background 1s ease; box-shadow: 0 0 calc(var(--w) * .006) rgb(0 0 0 / .4); }
-  .win::before { left: 50%; top: 0; bottom: 0; width: calc(var(--w) * .014); margin-left: calc(var(--w) * -.007); }
-  .win::after { top: 42%; left: 0; right: 0; height: calc(var(--w) * .014); }
-  .glass { position: absolute; inset: 0; z-index: 1; background: linear-gradient(115deg, rgb(255 255 255 / .1), transparent 30%, transparent 62%, rgb(255 255 255 / .06) 70%, transparent 78%); }
-  .sky { position: absolute; inset: 0; background: linear-gradient(180deg, var(--sky1, #04060f), var(--sky2, #0a1024) 58%, var(--sky3, #111a36)); }
-  .stars { position: absolute; inset: 0; opacity: var(--stars, 1); transition: opacity 1.2s ease;
-    background: radial-gradient(1.2px 1.2px at 12% 18%, #fff, transparent), radial-gradient(1px 1px at 31% 9%, #fff, transparent), radial-gradient(1.4px 1.4px at 44% 31%, #dfe8ff, transparent),
-      radial-gradient(1px 1px at 63% 14%, #fff, transparent), radial-gradient(1.2px 1.2px at 78% 36%, #fff, transparent), radial-gradient(1px 1px at 88% 11%, #dfe8ff, transparent),
-      radial-gradient(1px 1px at 22% 44%, #fff, transparent), radial-gradient(1.3px 1.3px at 55% 49%, #fff, transparent), radial-gradient(1px 1px at 70% 58%, #fff, transparent), radial-gradient(1px 1px at 8% 60%, #fff, transparent); }
-  .orb { position: absolute; left: var(--ox, 70%); top: var(--oy, 24%); width: calc(var(--w) * .075); aspect-ratio: 1; margin: calc(var(--w) * -.0375); border-radius: 50%;
-    background: #fff3c4; box-shadow: 0 0 calc(var(--w) * .07) calc(var(--w) * .02) rgb(255 226 150 / .75); }
-  .orb.moon { background: radial-gradient(circle at 68% 38%, transparent 52%, #f3f0e4 54%); box-shadow: none; filter: drop-shadow(0 0 calc(var(--w) * .02) rgb(220 228 255 / .7)); }
-  .hills { position: absolute; left: 0; right: 0; bottom: 0; height: 36%;
-    background: radial-gradient(75% 100% at 22% 100%, var(--hill, #070b18) 70%, transparent 71%), radial-gradient(85% 78% at 84% 100%, var(--hill2, #0a1022) 70%, transparent 71%); }
-  /* linen curtains on a rod */
-  .curt { position: absolute; bottom: calc(var(--w) * .2); width: calc(var(--w) * .2); height: calc(var(--w) * 1.08); transform: translateZ(1.2px);
-    background: linear-gradient(0deg, rgb(0 0 0 / .18), transparent 30%),
-      repeating-linear-gradient(90deg, rgb(0 0 0 / .26) 0, rgb(255 255 255 / .08) 16%, rgb(0 0 0 / .12) 26%, rgb(255 255 255 / .1) 38%, rgb(0 0 0 / .24) 50%), #c9bfa9;
-    border-radius: 0 0 calc(var(--w) * .01) calc(var(--w) * .01); box-shadow: 0 calc(var(--w) * .02) calc(var(--w) * .04) rgb(0 0 0 / .35); }
-  .curt.l { left: 52.6%; } .curt.r { left: 88.6%; }
-  .crod { position: absolute; left: 51.8%; bottom: calc(var(--w) * 1.27); width: calc(var(--w) * 1.33); height: calc(var(--w) * .014); border-radius: 99px; transform: translateZ(1.5px);
-    background: linear-gradient(180deg, #4a4540, #1f1c19); box-shadow: 0 calc(var(--w) * .01) calc(var(--w) * .015) rgb(0 0 0 / .35); }
-  .crod::before, .crod::after { content: ""; position: absolute; top: 50%; width: calc(var(--w) * .03); aspect-ratio: 1; margin-top: calc(var(--w) * -.015); border-radius: 50%; background: #2a2622; }
-  .crod::before { left: calc(var(--w) * -.02); } .crod::after { right: calc(var(--w) * -.02); }
-  /* a framed print, and the cat pinned up next to it */
-  .poster { position: absolute; left: 2.2%; bottom: calc(var(--w) * .44); width: calc(var(--w) * .44); padding: calc(var(--w) * .034); transform: translateZ(1px);
-    background: #f0ece3; border: calc(var(--w) * .013) solid #17171a; border-radius: calc(var(--w) * .003);
-    box-shadow: calc(var(--w) * .01) calc(var(--w) * .022) calc(var(--w) * .04) rgb(0 0 0 / .45), inset 0 0 calc(var(--w) * .008) rgb(0 0 0 / .2); }
-  .poster img { display: block; width: 100%; aspect-ratio: 4 / 5; object-fit: cover; }
-  .poster p { margin: calc(var(--w) * .016) 0 0; display: flex; justify-content: space-between; color: #26262a; font: 600 calc(var(--w) * .0125)/1 "Geist", sans-serif; letter-spacing: .22em; text-transform: uppercase; }
-  .poster p span { font-weight: 400; letter-spacing: .1em; opacity: .6; }
-  .snap { position: absolute; left: 20.5%; bottom: calc(var(--w) * .74); width: calc(var(--w) * .15); padding: calc(var(--w) * .01) calc(var(--w) * .01) calc(var(--w) * .03); transform: translateZ(1px) rotate(5deg);
-    background: #f4f1ea; box-shadow: 0 calc(var(--w) * .01) calc(var(--w) * .022) rgb(0 0 0 / .4); }
-  .snap img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; }
-  .snap::before { content: ""; position: absolute; left: 30%; top: calc(var(--w) * -.014); width: 40%; height: calc(var(--w) * .03); rotate: -4deg; background: rgb(240 200 120 / .72); }
-
-  /* ---------- little 3D things on the desk (built by script: boxes and cylinders) ---------- */
-  .props { position: absolute; inset: 0; pointer-events: none; }
-  .o { position: absolute; width: 0; height: 0; }
-  .f { position: absolute; left: 0; top: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; filter: brightness(calc(var(--lum, .5) * var(--sh, 1))); transition: filter 1s ease; }
-  .f.two { backface-visibility: visible; -webkit-backface-visibility: visible; }
-  .f.cap { border-radius: 50%; }
-  .mug { background: linear-gradient(180deg, #ece6da, #d9d1c2); }
-  .mug.cap { background: radial-gradient(circle, #4a2a18 0 52%, #2c180d 64%, #ddd5c6 67%); }
-  .mug-h { border: calc(var(--w) * .011) solid #e2dbcd; border-radius: 45%; }
-  .steam { width: calc(var(--w) * .05); height: calc(var(--w) * .1); margin-left: calc(var(--w) * -.025); margin-top: calc(var(--w) * -.1); transform-origin: 50% 100%;
-    background: radial-gradient(40% 50% at 50% 60%, rgb(255 255 255 / .22), transparent); filter: blur(calc(var(--w) * .006)); opacity: 0; animation: steam 3.6s ease-in infinite; }
-  .steam + .steam { animation-delay: 1.8s; }
-  @keyframes steam { 0% { opacity: 0; translate: 0 0 0; } 30% { opacity: 1; } 100% { opacity: 0; translate: 0 0 calc(var(--w) * .09); } }
-  .pot { background: linear-gradient(180deg, #c06c45, #a3583a); }
-  .pot.cap { background: radial-gradient(circle, #3a2a1d, #22180f); }
-  .rim { background: #b8653f; }
-  .leaf { transform-origin: 50% 100%; border-radius: 50% 50% 45% 45% / 92% 92% 8% 8%;
-    background: linear-gradient(90deg, #c8bf5a 0 5%, #2e6a3a 11%, #4a9152 48%, #3d7e45 52%, #285a31 90%, #c8bf5a 95%); }
-  .book.top, .book.bk { background: var(--c); }
-  .book.top { background: linear-gradient(90deg, transparent 8%, rgb(255 255 255 / .12) 8% 9%, transparent 9%), var(--c); }
-  .book.fr, .book.sd { background: repeating-linear-gradient(0deg, #efe7d4 0 1px, #d8cdb4 1px 2px); }
-  .note.top { background: linear-gradient(90deg, transparent 84%, #0b0b0d 84% 87%, transparent 87%), linear-gradient(135deg, #2a2b30, #1b1c20); border-radius: 0 calc(var(--w) * .006) calc(var(--w) * .006) 0; }
-  .note.fr, .note.sd, .note.bk { background: #e7dfcc; }
-  .pen { background: linear-gradient(90deg, #b8903f, #e6c27a 40%, #8f6c2c); }
-  .pen.cap { background: #1a1a1c; }
-  .phone.top { background: radial-gradient(circle at 18% 12%, #0c0c0e 0 5%, #3a3b40 6% 7.5%, transparent 8%), linear-gradient(135deg, #2b2c31, #18191c); border-radius: calc(var(--w) * .012); }
-  .phone.fr, .phone.sd, .phone.bk { background: #6d6f75; }
-  .metal { background: linear-gradient(90deg, #121317, #3a3d46 45%, #16171b); }
-  .metal.cap { background: radial-gradient(circle at 40% 35%, #3b3e47, #15161a 70%); }
-  .shade { background: linear-gradient(180deg, #2b2e36, #14151a); }
-  .shade.cap { background: radial-gradient(circle at 40% 35%, #3b3e47, #15161a 70%); }
-  .bulb { border-radius: 50%; background: #2a2a2e; transition: background .4s ease, box-shadow .4s ease; }
-  body.lamp-on .bulb { background: radial-gradient(closest-side, #fffaf0, #ffd796 60%, #e0a14e); box-shadow: 0 0 calc(var(--w) * .06) calc(var(--w) * .02) rgb(255 205 130 / .85); filter: none; }
-  .sill { background: var(--frame, #8a8478); }
-  #lamp-hit .f { pointer-events: auto; cursor: pointer; }
-
-  /* ---------- lid ---------- */
-  .lid { position: absolute; left: calc(var(--w) * -.5); top: calc(var(--h) * -1); width: var(--w); height: var(--h);
-    transform-origin: 50% 100%; transform: rotateX(var(--lid, -87deg)); transition: transform 1.3s cubic-bezier(.34, 1.3, .44, 1); }
-  body:not([data-s="closed"]) .lid { --lid: 13deg; }
-  .face { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; border-radius: calc(var(--w) * .018) calc(var(--w) * .018) calc(var(--w) * .006) calc(var(--w) * .006); }
-  .front { background: #08090c; padding: 2.4% 2.4% 4.6%; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .06); }
-  .back { transform: rotateY(180deg) translateZ(calc(var(--w) * .008)); background: linear-gradient(160deg, #474b5a, #2a2d38 45%, #1c1e26);
-    box-shadow: inset 0 0 0 1px rgb(255 255 255 / .14), inset 0 calc(var(--w) * .004) 0 rgb(255 255 255 / .12); display: grid; place-items: center; }
-  .back img { width: 27%; aspect-ratio: 1; border-radius: 50%; transform: rotate(180deg); box-shadow: 0 0 0 calc(var(--w) * .004) rgb(255 255 255 / .85), 0 calc(var(--w) * .006) calc(var(--w) * .02) rgb(0 0 0 / .5); }
-  #cam { position: absolute; left: 50%; top: .55%; width: 1.3%; aspect-ratio: 1; margin-left: -.65%; border-radius: 50%; background: #1b1d24; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .12); }
-  #cam::before { content: ""; position: absolute; inset: -160%; }   /* bigger hit area */
-  #cam.on { background: #4ade80; box-shadow: 0 0 calc(var(--w) * .012) #4ade80; }
-
-  .screen { position: relative; width: 100%; height: 100%; overflow: hidden; border-radius: calc(var(--w) * .005); background: #000; }
-  .wall { position: absolute; inset: 0; background: var(--wall); background-size: cover; background-position: center; opacity: 0; transform: scale(1.06); transition: opacity 1.2s ease, transform 2.4s var(--ease); }
-  .wall::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgb(0 0 0 / .28), rgb(0 0 0 / .1) 40%, rgb(0 0 0 / .62)); }
-  body[data-s="on"] .wall { opacity: 1; transform: none; }
-  /* a soft reflection across the glass */
-  .screen::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(115deg, rgb(255 255 255 / .07), transparent 32%); }
-
-
-  .desk { position: absolute; inset: 0; display: flex; flex-direction: column; opacity: 0; transition: opacity .9s ease; }
-  body[data-s="on"] .desk { opacity: 1; }
-  body.zooming .desk { opacity: 0; transition-duration: .35s; }   /* the screen clears while the laptop turns to you */
-  .bar { display: flex; justify-content: space-between; align-items: center; padding: 1.4% 2.2%;
-    font-size: clamp(8px, calc(var(--w) * .0155), 14px); color: rgb(255 255 255 / .8); font-variant-numeric: tabular-nums;
-    background: linear-gradient(180deg, rgb(0 0 0 / .35), transparent); }
-  .bar span { display: flex; align-items: center; gap: .6em; }
-  .bar img { width: 1.5em; height: 1.5em; border-radius: 50%; }
-  .mid { flex: 1; display: grid; place-content: center; text-align: center; min-height: 0; }
-  h1 { margin: 0; font-size: calc(var(--w) * __TITLE_SIZE__); line-height: .95; font-weight: 500; letter-spacing: -.06em; text-shadow: 0 0 calc(var(--w) * .05) rgb(255 255 255 / .28); }
-  h1 span { display: inline-block; opacity: 0; transform: translateY(.25em); transition: opacity .7s ease, transform .9s var(--ease); transition-delay: calc(.15s + var(--i) * .06s); }
-  body[data-s="on"] h1 span { opacity: 1; transform: none; }
-  .tag { margin: .9em 0 0; font-size: clamp(8px, calc(var(--w) * .0185), 16px); color: rgb(255 255 255 / .7); }
-  #typed { height: 1.4em; margin: .7em 0 0; font: 400 clamp(8px, calc(var(--w) * .0175), 15px)/1.4 "JetBrains Mono", ui-monospace, monospace; color: var(--acc2); white-space: pre; transition: opacity .6s; }
-  #typed:not(:empty)::after { content: "▍"; animation: blink 1s steps(2) infinite; }
-  @keyframes blink { 50% { opacity: 0; } }
-
-  /* live widgets: on the screen (wide), or as cards under the laptop (phones) */
-  .dock { display: flex; gap: 1.4%; padding: 0 2.2% 2.4%; }
-  .wg { flex: 1 1 0; min-width: 0; padding: 1.5% 1.9%; border-radius: calc(var(--w) * .014); text-align: left;
-    background: rgb(10 12 20 / .58); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1); }
-  .wg .k { display: flex; align-items: center; gap: .6em; font-size: clamp(9px, calc(var(--w) * .0125), 11px); font-weight: 500; letter-spacing: .09em; text-transform: uppercase; color: rgb(255 255 255 / .5); }
-  .wg .v { margin-top: .35em; font-size: clamp(15px, calc(var(--w) * .026), 23px); font-weight: 500; letter-spacing: -.03em; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .wg .s { margin-top: .15em; font-size: clamp(10px, calc(var(--w) * .0145), 13px); color: rgb(255 255 255 / .66); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .dot { width: .62em; height: .62em; border-radius: 50%; background: rgb(255 255 255 / .3); flex: none; }
-  .dot.on { background: #4ade80; box-shadow: 0 0 .9em rgb(74 222 128 / .7); }
-  .dot.a { background: var(--acc); box-shadow: 0 0 .9em var(--acc); }
-  .dot.b { background: #ffd9a8; box-shadow: 0 0 .9em rgb(255 217 168 / .7); }
-
-  /* the cat lives behind the screen */
-  .cat { position: absolute; left: 50%; top: 2%; width: 24%; margin-left: -12%; transform: translateZ(calc(var(--w) * -.012)); transition: transform .7s cubic-bezier(.3, 1.5, .5, 1), visibility 0s .7s; pointer-events: none; visibility: hidden; }
-  .cat img { display: block; width: 100%; border-radius: 50%; }
-  .cat span { position: absolute; left: 88%; bottom: 62%; padding: .35em .7em; border-radius: 1em 1em 1em .25em; background: #fff; color: #0b0d14; font-size: clamp(10px, calc(var(--w) * .017), 14px); font-weight: 500; white-space: nowrap; opacity: 0; transition: opacity .3s .35s; }
-  .cat.peek { transform: translateZ(calc(var(--w) * -.012)) translateY(-66%); visibility: visible; transition-delay: 0s; }
-  .cat.peek span { opacity: 1; }
-
-  /* one firefly per visitor, circling the screen light */
-  .flies { position: absolute; left: 0; top: calc(var(--h) * -.45); opacity: 0; transition: opacity 2s ease 1s; }
-  body[data-s="on"] .flies { opacity: 1; }
-  .fly { position: absolute; animation: spin var(--dur) linear infinite; animation-delay: var(--del); }
-  .fly i { position: absolute; transform: translate3d(var(--r), var(--y), 0); animation: bob 4.2s ease-in-out infinite alternate; animation-delay: var(--del); }
-  .fly b { position: absolute; width: 6px; height: 6px; margin: -3px; border-radius: 50%; background: #ffe7b0; box-shadow: 0 0 10px 2px rgb(255 217 140 / .75);
-    animation: unspin var(--dur) linear infinite; animation-delay: var(--del); }
-  @keyframes spin { to { transform: rotateY(360deg); } }
-  @keyframes unspin { to { transform: rotateY(-360deg); } }
-  @keyframes bob { to { translate: 0 calc(var(--w) * .05); } }
-
-
-  /* ---------- zoomed in: the laptop's desktop fills the page ---------- */
-  .screen { cursor: zoom-in; }
-  body:not([data-s="on"]) .screen { cursor: inherit; }
-  #os { position: fixed; inset: 0; z-index: 20; overflow: hidden; background: #000; visibility: hidden; transform-origin: 0 0; touch-action: auto; }
-  body.os-fly #os, body[data-z="1"] #os { visibility: visible; }
-  body.os-fly #os { will-change: transform, clip-path, opacity; overflow: hidden !important; }
-  #os { scrollbar-width: thin; scrollbar-color: rgb(255 255 255 / .2) transparent; }
-  body[data-z="1"] #stage, body[data-z="1"] #cards { visibility: hidden; }
-  body.zooming #cards { opacity: 0 !important; transition: opacity .3s ease !important; }
-  /* the room falls away while you lean in */
-  #room { transition: opacity .9s ease, filter .9s ease; }
-  body.zooming #room { opacity: .35; filter: blur(6px); }
-  /* the desktop's own bits settle in once you're inside */
-  .os-bar, .os-title { transition: opacity .45s ease, translate .6s var(--ease); }
-  body:not([data-z="1"]) .os-bar { opacity: 0; translate: 0 -10px; }
-  body:not([data-z="1"]) .os-title { opacity: 0; translate: 0 18px; }
-  .os-title { transition-duration: .7s, .9s; }
-  body[data-z="1"] .os-bar { transition-delay: .15s; }
-  .os-wall { position: absolute; inset: 0; background: var(--wall); background-size: cover; background-position: center; }
-  .os-wall::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgb(0 0 0 / .3), rgb(0 0 0 / .12) 40%, rgb(0 0 0 / .62)); }
-  .os-bar { position: absolute; z-index: 3; left: 0; right: 0; top: 0; display: flex; justify-content: space-between; align-items: center; padding: 14px 22px;
-    font-size: 14px; color: rgb(255 255 255 / .85); font-variant-numeric: tabular-nums; background: linear-gradient(180deg, rgb(0 0 0 / .45), transparent); }
-  .os-bar > span { display: flex; align-items: center; gap: 12px; }
-  .os-bar img { width: 22px; height: 22px; border-radius: 50%; }
-  #os-x { display: flex; align-items: center; gap: 9px; height: 38px; padding: 0 6px 0 12px; border-radius: 13px; font-size: 13px; font-weight: 500; letter-spacing: .01em;
-    color: rgb(255 255 255 / .9); background: rgb(14 16 26 / .5); -webkit-backdrop-filter: blur(18px) saturate(1.4); backdrop-filter: blur(18px) saturate(1.4);
-    box-shadow: inset 0 0 0 1px rgb(255 255 255 / .14), 0 10px 30px rgb(0 0 0 / .3); transition: background .2s ease, box-shadow .25s ease, transform .2s var(--ease); }
-  #os-x svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform .4s var(--ease); }
-  #os-x kbd { font: 600 10.5px/1 inherit; letter-spacing: .05em; padding: 5px 7px 6px; border-radius: 8px; color: rgb(255 255 255 / .72);
-    background: linear-gradient(rgb(255 255 255 / .16), rgb(255 255 255 / .06)); box-shadow: inset 0 -2px 0 rgb(0 0 0 / .35), inset 0 0 0 1px rgb(255 255 255 / .13); }
-  #os-x:hover { background: rgb(255 255 255 / .13); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .24), 0 0 26px color-mix(in srgb, var(--acc) 40%, transparent); }
-  #os-x:hover svg { transform: scale(.8); }
-  #os-x:active { transform: scale(.95); }
-  #os-x:focus-visible { outline: 2px solid var(--acc); outline-offset: 3px; }
-  @media (pointer: coarse) { #os-x { padding: 0 14px 0 12px; } #os-x kbd { display: none; } }
-  .os-title { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; pointer-events: none; }
-  .os-title h2 { margin: 0; font-size: __OS_TITLE_SIZE__; line-height: .95; font-weight: 500; letter-spacing: -.06em; text-shadow: 0 0 5vw rgb(255 255 255 / .28); }
-  .os-title p { margin: 1em 0 0; font-size: clamp(13px, 1.9vw, 20px); color: rgb(255 255 255 / .7); }
-  .ow { position: absolute; left: calc(var(--x) * 1vw); top: calc(var(--y) * 1vh); width: clamp(250px, 23vw, 330px); overflow: hidden; border-radius: 18px;
-    background: rgb(14 16 26 / .7); -webkit-backdrop-filter: blur(22px) saturate(1.3); backdrop-filter: blur(22px) saturate(1.3);
-    box-shadow: 0 30px 80px rgb(0 0 0 / .5), inset 0 0 0 1px rgb(255 255 255 / .12);
-    opacity: 0; transform: scale(.9); transition: opacity .3s ease, transform .5s var(--ease); }
-  body[data-z="1"] .ow { opacity: 1; transform: none; transition-delay: calc(.1s + var(--i) * .07s); }
-  .ow { translate: var(--dx, 0px) var(--dy, 0px); }
-  .ow.dragging { transition: none !important; box-shadow: 0 44px 110px rgb(0 0 0 / .62), inset 0 0 0 1px rgb(255 255 255 / .2); }
-  .ow header { display: flex; align-items: center; gap: 9px; padding: 12px 16px; cursor: grab; touch-action: none; background: rgb(255 255 255 / .045);
-    font-size: 11.5px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: rgb(255 255 255 / .62); }
-  .ow-b { padding: 16px 18px 18px; }
-  .ow.dragging header { cursor: grabbing; }
-  .big { font-size: 34px; line-height: 1.1; font-weight: 500; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
-  .sub { margin-top: 5px; font-size: 14px; color: rgb(255 255 255 / .66); }
-  .meter { display: grid; grid-template-columns: 62px 1fr 42px; align-items: center; gap: 10px; margin-top: 13px; font-size: 12.5px; color: rgb(255 255 255 / .6); }
-  .meter i { height: 6px; border-radius: 99px; background: rgb(255 255 255 / .1); overflow: hidden; }
-  .meter b { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--acc2), var(--acc)); transition: width .8s var(--ease); }
-  .meter em { font-style: normal; text-align: right; color: #fff; font-variant-numeric: tabular-nums; }
-  .trio { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
-  .trio b { display: block; font-size: 30px; font-weight: 500; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
-  .trio span { font-size: 11.5px; color: rgb(255 255 255 / .55); }
-  .dcc { display: flex; align-items: center; gap: 14px; }
-  .dcc .av { position: relative; flex: none; }
-  .dcc img { display: block; width: 58px; height: 58px; border-radius: 50%; background: rgb(255 255 255 / .08); }
-  .dcc .av i { position: absolute; right: -2px; bottom: -2px; width: 18px; height: 18px; border-radius: 50%; border: 3.500px solid #151722; background: var(--c, #80848e); }
-  .dcc b { display: block; font-size: 19px; font-weight: 600; letter-spacing: -.02em; }
-  .dcc span { font-size: 13.5px; color: rgb(255 255 255 / .66); }
-  .dc-act { margin-top: 13px; padding: 10px 12px; border-radius: 12px; background: rgb(255 255 255 / .06); font-size: 13.5px; line-height: 1.4; }
-  .dc-act small { display: block; font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: rgb(255 255 255 / .5); margin-bottom: 2px; }
-  .zoom-ic { display: inline-flex; opacity: .75; }
-  .zoom-ic svg { width: 1.2em; height: 1.2em; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-
-  /* ---------- around the laptop ---------- */
-  #hint { position: fixed; left: 0; right: 0; bottom: max(26px, env(safe-area-inset-bottom)); text-align: center; pointer-events: none;
-    font-size: 13px; color: rgb(255 255 255 / .45); letter-spacing: .02em; transition: opacity .8s ease; }
-  #hint button { pointer-events: auto; padding: 10px 18px; border-radius: 999px; font-weight: 500; color: rgb(255 255 255 / .9); transition: background .2s ease, color .2s ease; }
-  #hint button:hover { background: rgb(255 255 255 / .08); color: #fff; }
-  #hint button:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
-  body:not([data-s="closed"]) #hint button { pointer-events: none; }
-  body[data-s="closed"] #hint { animation: breathe 2.8s ease-in-out infinite; font-size: 15px; }
-  @keyframes breathe { 50% { opacity: .35; } }
-  #cards { display: none; }
-
-  @media (max-width: 700px) and (orientation: portrait) {
-    :root { --w: min(84vw, 44vh); }
-    body[data-s="closed"] .dolly { transform: translateY(calc(var(--w) * .12)) scale(.9); }
-    #stage { place-items: start center; perspective-origin: 50% 24%; }
-    .rig { transform: translateY(calc(var(--w) * .86 + 8vh)) rotateX(-22deg) rotateY(-9deg); }
-    .dock, .key, .key.w, .ud .key { font-size: 0; }
-    .dock { display: none; }
-    #cards { position: fixed; left: 0; right: 0; bottom: max(26px, calc(env(safe-area-inset-bottom) + 16px)); display: grid; gap: 8px; justify-items: center; padding: 0 16px;
-      opacity: 0; transform: translateY(14px); transition: opacity .8s ease .5s, transform .9s var(--ease) .5s; pointer-events: none; }
-    body[data-s="on"] #cards { opacity: 1; transform: none; }
-    #cards { gap: 6px; }
-    #cards .wg { flex: none; width: min(340px, 100%); padding: 8px 14px; border-radius: 15px; background: rgb(18 20 30 / .92);
-      display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 12px; }
-    #cards .k { font-size: 10.5px; } #cards .s { grid-column: 1; font-size: 12px; margin-top: 3px; }
-    #cards .v { grid-column: 2; grid-row: 1 / span 2; margin: 0; font-size: 18px; text-align: right; }
-    #hint { bottom: max(18px, env(safe-area-inset-bottom)); font-size: 12px; }
-    #os { overflow-y: auto; touch-action: pan-y; }
-    .os-wall, .os-bar { position: fixed; }
-    .os-bar { padding: 12px 16px; background: linear-gradient(180deg, rgb(0 0 0 / .75) 40%, transparent); }
-    .os-title { position: relative; inset: auto; padding: 86px 0 24px; }
-    .os-title h2 { font-size: 23vw; }
-    #wins { position: relative; display: grid; gap: 12px; padding: 0 16px 40px; }
-    .ow { position: static; width: auto; -webkit-backdrop-filter: none; backdrop-filter: none; background: rgb(14 16 26 / .9); translate: none; }
-    .ow header { cursor: default; touch-action: auto; }
-    body[data-s="closed"] #hint { bottom: 26vh; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .lid { transition-duration: .01s; } .fly, .fly i, .fly b, #hint { animation: none !important; }
-    #stage, .rig { transition-duration: .01s !important; } #room, .os-bar, .os-title { transition-duration: .01s !important; }
-  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; overflow: hidden; background: #0a0a0b; }
+  body { color: #f1f1ef; font-family: "Geist", "Segoe UI", system-ui, sans-serif; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; opacity: 0; transition: opacity 1.6s ease; }
+  canvas.on { opacity: 1; }
+  main { position: fixed; inset: auto 0 0; display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; pointer-events: none;
+    padding: 0 max(48px, env(safe-area-inset-right)) max(44px, calc(env(safe-area-inset-bottom) + 20px)) max(48px, env(safe-area-inset-left)); }
+  h1 { margin: 0; font-size: clamp(40px, 6vw, 84px); font-weight: 500; letter-spacing: -.045em; line-height: .9; min-width: 0; overflow-wrap: anywhere; }
+  p { margin: 0; flex: none; text-align: right; font-size: 14px; line-height: 1.6; color: #a3a3a0; font-variant-numeric: tabular-nums; }
+  p span { display: block; }
+  #mc { color: #f1f1ef; }
+  #mc:empty { display: none; }
+  @media (max-width: 600px) { main { padding: 0 24px max(28px, calc(env(safe-area-inset-bottom) + 14px)); } p { font-size: 13px; } }
+  @media (prefers-reduced-motion: reduce) { canvas { transition: none; } }
 </style>
 </head>
-<body data-s="closed">
-<div id="room"></div>
-
-<div id="view"><div id="stage" aria-label="A laptop on a desk. Drag to look around.">
-  <div class="dolly"><div class="rig" id="rig">
-    <div class="laptop">
-      <div class="base">
-        <div class="tbl" aria-hidden="true">
-          <div class="tbl-top"></div>
-          <div class="mat"></div>
-          <div class="sun"></div>
-          <div class="pool"></div>
-          <div class="tbl-lip"></div>
-          <div class="rwall">
-            <div class="wglow"></div>
-            <div class="wtrim lit"></div>
-            <div class="win"><div class="sky"><i class="stars"></i><i class="orb" id="orb"></i><i class="hills"></i></div><i class="glass"></i></div>
-            <div class="curt l lit"></div><div class="curt r lit"></div><div class="crod lit"></div>
-            <div class="poster lit"><img src="img/bg/northern.jpg" alt="" decoding="async"><p>__BRAND__<span>nº 01</span></p></div>
-            <div class="snap lit"><img src="img/__ICON__-logo-192.png" alt=""></div>
-          </div>
-          <div class="props" id="props"></div>
-        </div>
-        <div class="shadow"></div>
-        <div class="lip b"></div><div class="lip l"></div><div class="lip r"></div><div class="lip f"></div>
-        <div class="deck">
-          <div class="grille"></div>
-          <div id="keys" aria-hidden="true"></div>
-          <div id="pad" aria-hidden="true"></div>
-        </div>
-      </div>
-      <div class="lid">
-        <div class="cat" id="cat" aria-hidden="true"><img src="img/__ICON__-logo-512.png" alt=""><span id="cat-say">meow.</span></div>
-        <div class="face back"><img src="img/__ICON__-logo-192.png" alt=""></div>
-        <div class="face front">
-          <button id="cam" aria-label="Webcam"></button>
-          <div class="screen">
-            <div class="wall" id="wall"></div>
-            <div class="desk">
-              <div class="bar"><span><img src="img/__ICON__-logo-64.png" alt="">__BRAND__</span><span><span id="clock">–</span><span class="zoom-ic" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4"/></svg></span></span></div>
-              <div class="mid">
-                <h1 aria-label="__BRAND__" id="title"></h1>
-                <p class="tag">a laptop in the corner of a room</p>
-                <p id="typed" aria-hidden="true"></p>
-              </div>
-              <div class="dock" id="dock"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="flies" id="flies" aria-hidden="true"></div>
-    </div>
-  </div></div>
-</div></div>
-
-<section id="cards" aria-live="polite"></section>
-
-<div id="os" aria-hidden="true">
-  <div class="os-wall"></div>
-  <header class="os-bar"><span><img src="img/__ICON__-logo-64.png" alt="">__BRAND__</span><span><span id="os-clock">–</span><button id="os-x" type="button" aria-label="Leave the desktop (Esc)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v4a1 1 0 0 1-1 1H4M15 4v4a1 1 0 0 0 1 1h4M15 20v-4a1 1 0 0 1 1-1h4M9 20v-4a1 1 0 0 0-1-1H4"/></svg><span>leave</span><kbd>esc</kbd></button></span></header>
-  <div class="os-title"><h2>__BRAND__</h2><p>a laptop in the corner of a room</p></div>
-  <div id="wins"></div>
-</div>
-<p id="hint"><button type="button" id="open-btn">open the laptop</button></p>
-
+<body>
+<canvas id="c" aria-hidden="true"></canvas>
+<main><h1>__BRAND__</h1><p><span id="mc" aria-live="polite"></span><span id="clock"></span></p></main>
 <script>
 const $ = (id) => document.getElementById(id);
-const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
-const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-const fine = matchMedia("(pointer: fine)").matches;
-const body = document.body, stage = $("stage"), rig = $("rig");
+const DISCORD_ID = "__DISCORD_ID__";   // not shown here; bootstrap.sh reads it
 
-/* ============ live widgets (same markup twice: on the screen and as phone cards) ============ */
-const WIDGETS = `
-  <div class="wg"><div class="k"><span class="dot" data-l="mc-dot"></span>minecraft</div><div class="v" data-l="mc-v">–</div><div class="s" data-l="mc-s">&nbsp;</div></div>
-  <div class="wg"><div class="k"><span class="dot a"></span>laptop</div><div class="v" data-l="up-v">–</div><div class="s" data-l="up-s">awake</div></div>
-  <div class="wg"><div class="k"><span class="dot b"></span>visitors</div><div class="v" data-l="here-v">–</div><div class="s" data-l="here-s">&nbsp;</div></div>
-  <div class="wg" data-dc hidden><div class="k"><span class="dot" data-l="dc-dot"></span>discord</div><div class="v" data-l="dc-v">–</div><div class="s" data-l="dc-s">&nbsp;</div></div>`;
-$("dock").innerHTML = WIDGETS; $("cards").innerHTML = WIDGETS;
-const each = (k, fn) => document.querySelectorAll(`[data-l="${k}"]`).forEach(fn);
-const setText = (k, text) => each(k, (el) => { if (el.textContent !== text) el.textContent = text; });
-const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-$("title").innerHTML = [..."__BRAND__"].map((c, i) => `<span style="--i:${i}">${c}</span>`).join("");
-
-/* ============ keyboard ============ */
-// [code, label, width]. A German Windows laptop keyboard.
-const WIN = `<svg viewBox="0 0 10 10" width="1.1em" height="1.1em" aria-hidden="true"><path fill="currentColor" d="M0 0h4.5v4.5H0zM5.500 0H10v4.5H5.500zM0 5.500h4.5V10H0zM5.500 5.500H10V10H5.500z"/></svg>`;
-const ROWS = [
-  [["Escape", "esc"], ...Array.from({ length: 12 }, (_, i) => ["F" + (i + 1), "F" + (i + 1)]), ["PrintScreen", "druck"], ["Delete", "entf"]],
-  [["Backquote", "^"], ..."1234567890".split("").map((n) => ["Digit" + n, n]), ["Minus", "ß"], ["Equal", "´"], ["Backspace", "⌫", 2]],
-  [["Tab", "⇥", 1.5], ...[..."QWERTZUIOP"].map((c) => ["Key" + (c === "Z" ? "Y" : c), c]), ["BracketLeft", "Ü"], ["BracketRight", "+"], ["Enter", "⏎", 1.5]],
-  [["CapsLock", "⇩", 1.75], ...[..."ASDFGHJKL"].map((c) => ["Key" + c, c]), ["Semicolon", "Ö"], ["Quote", "Ä"], ["Backslash", "#"], ["Enter2", "", 1.25]],
-  [["ShiftLeft", "⇧", 1.25], ["IntlBackslash", "&lt;"], ...[..."YXCVBNM"].map((c) => ["Key" + (c === "Y" ? "Z" : c), c]), ["Comma", ","], ["Period", "."], ["Slash", "-"], ["ShiftRight", "⇧", 2.75]],
-  [["ControlLeft", "strg", 1.2], ["Fn", "fn", .9], ["MetaLeft", WIN], ["AltLeft", "alt"], ["Space", "", 5.4], ["AltRight", "alt gr", 1.2], ["ControlRight", "strg", 1.1], ["ArrowLeft", "◂", 1.05], ["UpDown", "", 1.05], ["ArrowRight", "▸", 1.05]],
-];
-const TYPES = /^(Key|Digit|Minus|Bracket|Semicolon|Quote|Backslash|Comma|Period|Slash)/;
-const keyHtml = ([code, label, u]) => code === "UpDown"
-  ? `<span class="ud" style="--u:${u}"><i class="key" data-code="ArrowUp" data-ch="">▴</i><i class="key" data-code="ArrowDown" data-ch="">▾</i></span>`
-  : `<i class="key${label.length > 1 && !/^[<&]/.test(label) ? " w" : ""}" data-code="${code === "Enter2" ? "Enter" : code}" data-ch="${TYPES.test(code) ? label.toLowerCase() : code === "Space" ? " " : ""}" style="--u:${u || 1}">${label}</i>`;
-const keyEl = {};
-$("keys").innerHTML = ROWS.map((r, i) => `<div class="row${i ? "" : " fn"}">${r.map(keyHtml).join("")}</div>`).join("");
-document.querySelectorAll(".key").forEach((k) => { (keyEl[k.dataset.code] ||= []).push(k); });
-function light(code, ms = 140) {
-  for (const k of keyEl[code] || []) { k.classList.add("lit"); clearTimeout(k._t); k._t = setTimeout(() => k.classList.remove("lit"), ms); }
+/* ============ contour lines ============ */
+const VERT = "attribute vec2 a; void main() { gl_Position = vec4(a, 0., 1.); }";
+const FRAG = `#extension GL_OES_standard_derivatives : enable
+precision highp float;
+uniform vec2 r, m; uniform float t, px;
+vec2 h(vec2 p) { p = mod(p, 289.); vec3 q = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973)); q += dot(q, q.yzx + 33.33); return fract((q.xx + q.yz) * q.zy) * 2. - 1.; }
+float n(vec2 p) {                       // gradient noise: smooth hills, no grid
+  vec2 i = floor(p), f = fract(p), u = f * f * f * (f * (f * 6. - 15.) + 10.);
+  return mix(mix(dot(h(i), f), dot(h(i + vec2(1, 0)), f - vec2(1, 0)), u.x),
+             mix(dot(h(i + vec2(0, 1)), f - vec2(0, 1)), dot(h(i + vec2(1, 1)), f - vec2(1, 1)), u.x), u.y);
 }
-
-// whatever you type shows up on the laptop's screen
-let typed = "", typedTimer = 0;
-function type(ch) {
-  if (body.dataset.s !== "on") return;
-  typed = ch === "\b" ? typed.slice(0, -1) : (typed + ch).slice(-28);
-  $("typed").textContent = typed ? "> " + typed : "";
-  $("typed").style.opacity = 1;
-  clearTimeout(typedTimer);
-  typedTimer = setTimeout(() => { $("typed").style.opacity = 0; setTimeout(() => { typed = ""; $("typed").textContent = ""; }, 600); }, 4000);
-  const t = typed.toLowerCase();
-  if (t.endsWith("meow") || t.endsWith("miau")) peek("meow.");
-  else if (t.endsWith("hello") || t.endsWith("hallo") || t.endsWith("hi ")) peek("oh. hi.");
-}
-addEventListener("keydown", (e) => {
-  if (e.ctrlKey || e.metaKey || e.altKey) return;
-  if (zoom) { if (e.key === "Escape") zoomOut(); return; }
-  if (body.dataset.s === "closed") return;
-  light(e.code);
-  if (e.key === "Backspace") type("\b");
-  else if (e.key === "Escape") close();
-  else if (e.key.length === 1) { if (e.code === "Space") e.preventDefault(); type(e.key); }
-});
-
-const live = { up: null, upAt: 0, here: 0, cpu: 5 };
-
-/* ============ cat ============ */
-let catTimer = 0;
-function peek(text) {
-  if (body.dataset.s !== "on") return;
-  $("cat-say").textContent = text; $("cat").classList.add("peek"); $("cam").classList.add("on");
-  clearTimeout(catTimer);
-  catTimer = setTimeout(() => { $("cat").classList.remove("peek"); $("cam").classList.remove("on"); }, 2600);
-}
-const CAM = ["the cat is watching.", "meow.", "stop poking the webcam.", "…", "ok that's enough.", "purr."];
-let camN = 0;
-
-/* ============ open / close ============ */
-let timers = [];
-function open() {
-  if (body.dataset.s !== "closed") return;
-  body.dataset.s = "boot";
-  $("hint").style.opacity = 0;
-  timers.push(setTimeout(() => { body.dataset.s = "on"; }, reduced ? 50 : 900));
-}
-function close() {
-  if (body.dataset.s === "closed" || zoom) return;
-  timers.forEach(clearTimeout); timers = [];
-  $("cat").classList.remove("peek"); $("cam").classList.remove("on");
-  body.dataset.s = "closed";
-  $("hint").style.opacity = "";
-}
-
-/* ============ looking around ============ */
-const phone = () => matchMedia("(max-width: 700px) and (orientation: portrait)").matches;
-const home = () => (phone() ? { x: -22, y: -9 } : { x: -24, y: -16 });
-let cur = { ...home() }, goal = { ...home() }, raf = 0, drag = null, idle = 0;
-function place() {
-  const lift = phone() ? "translateY(calc(var(--w) * .86 + 8vh))" : "translateY(calc(var(--w) * .27))";
-  rig.style.transform = `${lift} rotateX(${cur.x.toFixed(2)}deg) rotateY(${cur.y.toFixed(2)}deg)`;
-}
-function frame() {
-  cur.x += (goal.x - cur.x) * .12; cur.y += (goal.y - cur.y) * .12;
-  place();
-  raf = Math.abs(goal.x - cur.x) + Math.abs(goal.y - cur.y) > .02 ? requestAnimationFrame(frame) : 0;
-}
-const kick = () => { if (!raf) raf = requestAnimationFrame(frame); };
-function goHome() { const h = home(); goal.x = h.x; goal.y = h.y + Math.round((goal.y - h.y) / 360) * 360; kick(); }
-
-stage.addEventListener("pointerdown", (e) => {
-  if (zoom) return;
-  drag = { id: e.pointerId, x: e.clientX, y: e.clientY, gx: goal.x, gy: goal.y, moved: false, target: e.target };
-  clearTimeout(idle);
-});
-addEventListener("pointermove", (e) => {
-  if (drag && e.pointerId === drag.id) {
-    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-    if (!drag.moved && Math.hypot(dx, dy) < 7) return;
-    if (!drag.moved) { drag.moved = true; stage.classList.add("drag"); try { stage.setPointerCapture(e.pointerId); } catch {} }
-    goal.y = drag.gy + dx * .45; goal.x = clamp(drag.gx - dy * .35, -78, 4);
-    kick();
-  } else if (fine && !drag && !reduced && !zoom) {  // the laptop leans a little towards the mouse
-    const h = home(), base = Math.round((goal.y - h.y) / 360) * 360;
-    if (Math.abs(goal.y - base - h.y) > 30 || Math.abs(goal.x - h.x) > 14) return;   // you turned it: leave it alone
-    goal.y = base + h.y + (e.clientX / innerWidth - .5) * 9; goal.x = h.x - (e.clientY / innerHeight - .5) * 6;
-    kick();
+void main() {
+  float s = min(r.x, r.y);
+  vec2 p = (gl_FragCoord.xy - .5 * r) / s, d = p - m;
+  float near = exp(-dot(d, d) * 9.);
+  float v = n(p * 1.5 + t * vec2(.022, .014) + 40.) + .42 * n(p * 3. - t * vec2(.018, .026) + 90.) + .14 * near;
+  float e = v * 17., w = fwidth(e), l = abs(fract(e - .5) - .5) / max(w, 1e-4);
+  float a = 1. - smoothstep(px * .35, px * .35 + 1., l);
+  a *= 1. - smoothstep(.25, .6, w);     // steep places would turn into a grey mass
+  float bold = step(mod(floor(e + .5), 5.), .5);
+  float y = gl_FragCoord.y / r.y, fade = mix(.25, 1., smoothstep(.02, .38, y));
+  gl_FragColor = vec4(vec3(.039, .039, .043) + a * (mix(.17, .46, bold) * fade + near * .22), 1.);
+}`;
+const cv = $("c"), still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+let gl, U, raf = 0;
+const aim = { x: .3, y: .12 }, at = { x: .3, y: .12 };
+function init() {
+  gl = cv.getContext("webgl", { antialias: false, alpha: false, powerPreference: "low-power" });
+  if (!gl || !gl.getExtension("OES_standard_derivatives")) { gl = null; return; }
+  const pr = gl.createProgram();
+  for (const [type, src] of [[gl.VERTEX_SHADER, VERT], [gl.FRAGMENT_SHADER, FRAG]]) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src); gl.compileShader(s); gl.attachShader(pr, s);
   }
-});
-function release(e) {
-  if (!drag || e.pointerId !== drag.id) return;
-  const d = drag; drag = null; stage.classList.remove("drag");
-  if (d.moved) { idle = setTimeout(goHome, 5000); return; }
-  click(d.target, e);
+  gl.linkProgram(pr);
+  if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) { console.error(gl.getProgramInfoLog(pr)); gl = null; return; }
+  gl.useProgram(pr);
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  const a = gl.getAttribLocation(pr, "a");
+  gl.enableVertexAttribArray(a); gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0);
+  U = Object.fromEntries(["r", "m", "t", "px"].map((k) => [k, gl.getUniformLocation(pr, k)]));
+  size();
+  cv.classList.add("on");
 }
-addEventListener("pointerup", release);
-addEventListener("pointercancel", (e) => { if (drag && e.pointerId === drag.id) { drag = null; stage.classList.remove("drag"); } });
-
-$("open-btn").addEventListener("click", () => open());
-function click(t, e) {
-  if (t.closest("#lamp-hit")) return setLamp(!body.classList.contains("lamp-on"), true);
-  if (body.dataset.s === "closed") return;
-  if (t.closest("#cam")) return peek(CAM[camN++ % CAM.length]);
-  if (t.closest(".screen") && body.dataset.s === "on") return zoomIn();
-  const k = t.closest(".key");
-  if (k) { light(k.dataset.code, 260); if (k.dataset.code === "Backspace") type("\b"); else if (k.dataset.ch) type(k.dataset.ch); return; }
-  const pad = t.closest("#pad");
-  if (pad) { const i = document.createElement("i"); i.style.left = e.offsetX + "px"; i.style.top = e.offsetY + "px"; pad.append(i); setTimeout(() => i.remove(), 700); }
+function size() {
+  if (!gl) return;
+  // sharp on phones, but never more than about 4 million pixels
+  const px = Math.min(devicePixelRatio || 1, 2, Math.sqrt(4e6 / Math.max(1, innerWidth * innerHeight)));
+  cv.width = Math.round(innerWidth * px); cv.height = Math.round(innerHeight * px);
+  gl.viewport(0, 0, cv.width, cv.height);
+  gl.uniform2f(U.r, cv.width, cv.height); gl.uniform1f(U.px, px);
+  draw(performance.now());
 }
-addEventListener("resize", () => { if (zoom) return; cur = { ...home() }; goal = { ...home() }; place(); });
-place();
-
-const rs = document.documentElement.style;
-
-/* ============ zoom into the screen ============ */
-// 0 = looking at the laptop, 1 = flying in, 2 = inside, 3 = flying out
-// Two moves: the laptop turns to face you, then the camera flies straight into the screen.
-// The desktop (#os) rides along on top of the screen the whole way, clipped to its shape,
-// so what you see stays sharp instead of blowing up the 3D scene.
-let zoom = 0;
-const os = $("os");
-const EASE = "cubic-bezier(.76, 0, .24, 1)";
-const T_TURN = reduced ? 1 : 560, T_FLY = reduced ? 1 : 900, T_OPEN = reduced ? 1 : 420;
-const ID = "translate(0px, 0px) scale(1)";
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const done = (a) => a.finished.catch(() => {});
-
-// where the screen sits right now, and the two transforms that carry it onto the window
-function fit() {
-  const el = document.querySelector(".screen"), r = el.getBoundingClientRect();
-  const W = innerWidth, H = innerHeight;
-  const k = Math.min(W / r.width, H / r.height);                 // screen grows until it touches the window edges
-  const ix = (W - r.width * k) / 2, iy = (H - r.height * k) / 2;  // what's left over around it at the end
-  const rad = (parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0) * (r.width / el.offsetWidth) * k;
-  return {
-    stage: `translate(${(ix - k * r.left).toFixed(2)}px, ${(iy - k * r.top).toFixed(2)}px) scale(${k.toFixed(5)})`,
-    os: `translate(${(r.left - ix / k).toFixed(2)}px, ${(r.top - iy / k).toFixed(2)}px) scale(${(1 / k).toFixed(5)})`,
-    clip: `inset(${iy.toFixed(1)}px ${ix.toFixed(1)}px round ${rad.toFixed(1)}px)`,
-  };
+function draw(now) {
+  at.x += (aim.x - at.x) * .04; at.y += (aim.y - at.y) * .04;
+  gl.uniform2f(U.m, at.x, at.y); gl.uniform1f(U.t, still ? 0 : now / 1000);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
-function turnTo(c, ms) {
-  rig.style.transition = `transform ${ms}ms cubic-bezier(.45, 0, .2, 1)`;
-  cur = c; goal = { ...c }; place();
+function loop(now) { raf = 0; if (!gl || document.hidden) return; draw(now); raf = requestAnimationFrame(loop); }
+const run = () => { if (gl && !still && !raf) raf = requestAnimationFrame(loop); };
+function point(e) {
+  const s = Math.min(innerWidth, innerHeight);
+  aim.x = (e.clientX - innerWidth / 2) / s; aim.y = (innerHeight / 2 - e.clientY) / s;
 }
-const facing = () => ({ x: -13, y: Math.round(cur.y / 360) * 360 });
+addEventListener("pointermove", point); addEventListener("pointerdown", point);
+addEventListener("resize", size);
+cv.addEventListener("webglcontextlost", (e) => { e.preventDefault(); gl = null; });
+cv.addEventListener("webglcontextrestored", () => { init(); run(); });
+init(); run();
 
-async function zoomIn() {
-  if (zoom || body.dataset.s !== "on") return;
-  zoom = 1; cancelAnimationFrame(raf); raf = 0; clearTimeout(idle); body.classList.add("zooming");
-  turnTo(facing(), T_TURN);
-  await wait(T_TURN + 30);
-  rig.style.transition = "none";
-  const f = fit();
-  os.getAnimations().forEach((a) => a.cancel());
-  body.classList.add("os-fly");
-  stage.animate([{ transform: ID }, { transform: f.stage }], { duration: T_FLY, easing: EASE, fill: "forwards" });
-  const fly = os.animate([
-    { transform: f.os, clipPath: f.clip, opacity: 0 },
-    { opacity: 1, offset: .3 },
-    { transform: ID, clipPath: f.clip, opacity: 1 },
-  ], { duration: T_FLY, easing: EASE, fill: "forwards" });
-  await done(fly);
-  if (zoom !== 1) return;
-  // landed: the picture spreads out to the window edges, the desktop wakes up
-  body.dataset.z = "1"; os.setAttribute("aria-hidden", "false");
-  const grow = os.animate([{ clipPath: f.clip }, { clipPath: "inset(0px 0px round 0px)" }], { duration: T_OPEN, easing: "cubic-bezier(.2, .8, .2, 1)", fill: "forwards" });
-  await done(grow);
-  os.getAnimations().forEach((a) => a.cancel());   // leave #os plain, so scrolling on phones behaves
-  body.classList.remove("os-fly");
-  zoom = 2;
-  $("os-x").focus({ preventScroll: true });
-}
+/* ============ clock + who is playing ============ */
+const de = /^de/i.test(navigator.language || "");
+if (de) document.documentElement.lang = "de";
+const fmt = new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" });
+const set = (id, text) => { if ($(id).textContent !== text) $(id).textContent = text; };
+const tick = () => set("clock", fmt.format(new Date()));
+tick(); setInterval(tick, 2000);
 
-async function zoomOut() {
-  if (zoom !== 2) return;
-  zoom = 3; os.setAttribute("aria-hidden", "true"); os.scrollTop = 0;
-  stage.getAnimations().forEach((a) => a.cancel());   // measure the screen where it really is
-  const f = fit();
-  stage.animate([{ transform: f.stage }, { transform: f.stage }], { duration: 1, fill: "forwards" });
-  body.classList.add("os-fly");
-  delete body.dataset.z;
-  const shrink = os.animate([{ clipPath: "inset(0px 0px round 0px)" }, { clipPath: f.clip }], { duration: T_OPEN * .8, easing: "cubic-bezier(.5, 0, .75, 0)", fill: "forwards" });
-  await done(shrink);
-  stage.getAnimations().forEach((a) => a.cancel());
-  const back = stage.animate([{ transform: f.stage }, { transform: ID }], { duration: T_FLY, easing: EASE, fill: "forwards" });
-  os.animate([
-    { transform: ID, clipPath: f.clip, opacity: 1 },
-    { opacity: 1, offset: .7 },
-    { transform: f.os, clipPath: f.clip, opacity: 0 },
-  ], { duration: T_FLY, easing: EASE, fill: "forwards" });
-  await done(back);
-  os.getAnimations().forEach((a) => a.cancel()); stage.getAnimations().forEach((a) => a.cancel());
-  body.classList.remove("os-fly", "zooming");
-  turnTo({ ...home(), y: home().y + Math.round(cur.y / 360) * 360 }, reduced ? 1 : 750);
-  await wait(reduced ? 10 : 760);
-  rig.style.transition = ""; zoom = 0;
-}
-$("os-x").addEventListener("click", zoomOut);
-
-// the desktop: four panels in fixed places
-const OW = [
-  ["mc", "Minecraft", 6, 17, `<div class="big" data-l="mc-v">–</div><div class="sub" data-l="mc-s">&nbsp;</div>`],
-  ["lap", "Laptop", 71, 15, `<div class="big" data-l="up-v">–</div><div class="sub">awake since the last restart</div>
-    <div class="meter"><span>CPU</span><i><b data-bar="cpu"></b></i><em data-l="cpu-n">–</em></div><div class="meter"><span>Memory</span><i><b data-bar="mem"></b></i><em data-l="mem-n">–</em></div>`],
-  ["vis", "Visitors", 9, 58, `<div class="trio"><div><b data-l="here-n">–</b><span>here now</span></div><div><b data-l="today-n">–</b><span>today</span></div><div><b data-l="total-n">–</b><span>all time</span></div></div>`],
-  ["dc", "Discord", 68, 57, `<div id="dc-card"></div>`],
-];
-$("wins").innerHTML = OW.map(([id, name, x, y, html], i) => `<section class="ow" data-w="${id}" style="--x:${x}; --y:${y}; --i:${i}"${id === "dc" ? " hidden" : ""}>
-  <header><span class="dot${id === "lap" ? " a" : id === "vis" ? " b" : ""}" ${id === "mc" ? 'data-l="mc-dot"' : id === "dc" ? 'data-l="dc-dot"' : ""}></span>${name}</header>
-  <div class="ow-b">${html}</div></section>`).join("");
-const ow = (id) => document.querySelector(`.ow[data-w="${id}"]`);
-// grab a panel by its title bar to move it (not on phones, where they stack)
-let wd = null, topZ = 5;
-$("wins").addEventListener("pointerdown", (e) => {
-  const w = e.target.closest(".ow");
-  if (!w) return;
-  w.style.zIndex = ++topZ;
-  if (!e.target.closest("header") || phone()) return;
-  wd = { w, id: e.pointerId, x: e.clientX, y: e.clientY, dx: +w.dataset.dx || 0, dy: +w.dataset.dy || 0 };
-  w.classList.add("dragging");
-  try { w.setPointerCapture(e.pointerId); } catch {}
-});
-$("wins").addEventListener("pointermove", (e) => {
-  if (!wd || e.pointerId !== wd.id) return;
-  const r = wd.w.getBoundingClientRect();
-  const left = r.left - ((+wd.w.dataset.dx || 0)), top = r.top - ((+wd.w.dataset.dy || 0));
-  // keep at least the title bar on screen
-  const dx = clamp(wd.dx + e.clientX - wd.x, -left - r.width + 80, innerWidth - left - 80);
-  const dy = clamp(wd.dy + e.clientY - wd.y, -top + 50, innerHeight - top - 44);
-  wd.w.dataset.dx = dx; wd.w.dataset.dy = dy;
-  wd.w.style.setProperty("--dx", dx + "px"); wd.w.style.setProperty("--dy", dy + "px");
-});
-const dropWin = (e) => { if (wd && e.pointerId === wd.id) { wd.w.classList.remove("dragging"); wd = null; } };
-$("wins").addEventListener("pointerup", dropWin);
-$("wins").addEventListener("pointercancel", dropWin);
-
-/* ============ the desk: little 3D objects made of boxes and cylinders ============ */
-// Units are laptop widths. Desk coordinates: x to the right, y towards you, z up.
-{
-  const U = (k) => `calc(var(--w) * ${+k.toFixed(4)})`;
-  const T = (x, y, z) => `translate3d(${U(x)}, ${U(y)}, ${U(z)})`;
-  const face = (cls, w, h, tf, sh = 1, extra = "") =>
-    `<i class="f ${cls}" style="width:${U(w)};height:${U(h)};margin:${U(-h / 2)} 0 0 ${U(-w / 2)};transform:${tf};--sh:${sh.toFixed(2)};${extra}"></i>`;
-  const group = (tf, html, attrs = "") => `<div class="o"${attrs} style="transform:${tf}">${html}</div>`;
-  const at = (x, y, z, rot, html, attrs = "", css = "") => `<div class="o"${attrs} style="left:${U(x)};top:${U(y)};transform:translateZ(${U(z)}) rotateZ(${rot}deg);${css}">${html}</div>`;
-  // a box standing on its own floor, centred on 0,0
-  const box = (c, w, d, h) =>
-    face(c + " top", w, d, T(0, 0, h), 1) +
-    face(c + " fr", w, h, T(0, d / 2, h / 2) + " rotateX(-90deg)", .8) +
-    face(c + " bk", w, h, T(0, -d / 2, h / 2) + " rotateX(-90deg) rotateY(180deg)", .5) +
-    face(c + " sd", d, h, T(-w / 2, 0, h / 2) + " rotateZ(90deg) rotateX(-90deg)", .7) +
-    face(c + " sd", d, h, T(w / 2, 0, h / 2) + " rotateZ(-90deg) rotateX(-90deg)", .6);
-  // a cylinder along z; light comes from the front left
-  const cyl = (c, r, h, n = 14, cap = "top") => {
-    const fw = 2 * r * Math.tan(Math.PI / n) * 1.06;
-    let html = "";
-    for (let i = 0; i < n; i++) {
-      const a = i * 360 / n, dot = (.5 * Math.sin(a * RAD0) + .8 * Math.cos(a * RAD0)) / .943;
-      html += face(c, fw, h, `rotateZ(${a}deg) ${T(0, r, h / 2)} rotateX(-90deg)`, .48 + .5 * Math.max(0, dot));
-    }
-    if (cap) html += face(c + " cap", 2 * r, 2 * r, `translateZ(${U(cap === "top" ? h : 0)})${cap === "top" ? "" : " rotateX(180deg)"}`, 1);
-    return html;
-  };
-  const RAD0 = Math.PI / 180;
-  const rod = (c, L, t) => face(c + " two", t, L, T(0, 0, L / 2) + " rotateX(-90deg)", .8) + face(c + " two", t, L, T(0, 0, L / 2) + " rotateZ(90deg) rotateX(-90deg)", .6);
-
-  // desk lamp: heavy round foot, two arms, a dome shade pointing down at the desk
-  const lamp = at(.17, .3, 0, 35,
-    cyl("metal", .075, .02, 18) +
-    group(`translateZ(${U(.02)}) rotateY(10deg)`,
-      rod("metal", .43, .02) +
-      group(`translateZ(${U(.43)})`, cyl("metal", .02, .03, 10)) +
-      group(`translateZ(${U(.43)}) rotateY(75deg)`,
-        rod("metal", .37, .018) +
-        group(`translateZ(${U(.37)}) rotateY(85deg)`,
-          cyl("shade", .06, .1, 16, "bottom") +
-          face("bulb two", .07, .07, `translateZ(${U(.075)})`, 1)))),
-    ' id="lamp-hit"');
-
-  const leaves = [[0, 12, .3], [55, 24, .25], [110, 16, .28], [170, 26, .22], [215, 14, .3], [270, 22, .24], [320, 18, .27], [85, 6, .33]]
-    .map(([a, tilt, L]) => `<i class="f two leaf" style="width:${U(.055)};height:${U(L)};margin:${U(-L)} 0 0 ${U(-.0275)};transform:translateZ(${U(.11)}) rotateZ(${a}deg) rotateX(${-(90 - tilt)}deg);--sh:${(.75 + (a % 90) / 300).toFixed(2)}"></i>`).join("");
-
-  $("props").innerHTML = [
-    lamp,
-    // plant in a terracotta pot, back right under the window
-    at(2.55, .3, 0, 0, cyl("pot", .07, .11, 16) + group(`translateZ(${U(.095)})`, cyl("rim", .077, .022, 16, null)) + leaves),
-    // two books, a bit crooked
-    at(2.14, .38, 0, 7, box("book", .32, .22, .034), "", "--c:#7b2f35"),
-    at(2.12, .37, .034, -5, box("book", .28, .2, .03), "", "--c:#2f4f6b"),
-    // a mug of coffee, still steaming
-    at(2.34, .82, 0, -35, cyl("mug", .045, .1, 16) +
-      `<i class="f two mug-h" style="width:${U(.05)};height:${U(.062)};margin:${U(-.031)} 0 0 ${U(-.025)};transform:${T(.056, 0, .05)} rotateX(-90deg)"></i>` +
-      (reduced ? "" : group(`translateZ(${U(.1)})`, `<i class="f two steam" style="transform:rotateX(-90deg)"></i><i class="f two steam" style="transform:rotateZ(90deg) rotateX(-90deg)"></i>`))),
-    // notebook with a pen on it
-    at(2.42, 1.3, 0, -12, box("note", .24, .32, .016) + group(`translateZ(${U(.023)}) rotateZ(64deg) rotateY(90deg) translateZ(${U(-.1)})`, cyl("pen", .007, .2, 8))),
-    // window sill
-    at(2.0, .035, .335, 0, box("sill", 1.0, .07, .022)),
-    // phone, face down
-    at(.42, 1.3, 0, 14, box("phone", .085, .17, .009)),
-  ].join("");
-}
-
-/* ============ the room: real sky in the window, and the lamp ============ */
-const RAD = Math.PI / 180, LAT = 51, LON = 10.5;
-const fakeHour = parseFloat(new URLSearchParams(location.search).get("h"));   // ?h=14.5 shows the room at 14:30 (UTC+1)
-function sunNow() {
-  const d = new Date();
-  if (!isNaN(fakeHour)) d.setUTCHours(0, Math.round((fakeHour - 1) * 60), 0, 0);
-  const n = (d - Date.UTC(d.getUTCFullYear(), 0, 0)) / 864e5;
-  const decl = -23.44 * Math.cos(2 * Math.PI * (n + 10) / 365) * RAD, lat = LAT * RAD;
-  const solar = d.getUTCHours() + d.getUTCMinutes() / 60 + LON / 15, ha = (solar - 12) * 15 * RAD;
-  return { alt: Math.asin(Math.sin(lat) * Math.sin(decl) + Math.cos(lat) * Math.cos(decl) * Math.cos(ha)) / RAD, solar };
-}
-const lerp = (a, b, t) => a + (b - a) * t;
-const mixHex = (a, b, t) => "#" + [1, 3, 5].map((i) => Math.round(lerp(parseInt(a.slice(i, i + 2), 16), parseInt(b.slice(i, i + 2), 16), t)).toString(16).padStart(2, "0")).join("");
-// sky colors at four sun heights: night, dusk, golden hour, day
-const SKY = [[-14, "#04060f", "#0a1024", "#111a36"], [-3, "#1b2450", "#6a4a7c", "#f0976a"], [5, "#3d6bb8", "#9db7dc", "#ffd9a6"], [18, "#3f7fd6", "#7fb0ea", "#cfe4f7"]];
-let dayness = 0;
-function paintRoom() {
-  const { alt, solar } = sunNow();
-  let i = 0;
-  while (i < SKY.length - 2 && alt > SKY[i + 1][0]) i++;
-  const A = SKY[i], B = SKY[i + 1], t = clamp((alt - A[0]) / (B[0] - A[0]), 0, 1);
-  [1, 2, 3].forEach((n) => rs.setProperty("--sky" + n, mixHex(A[n], B[n], t)));
-  dayness = clamp((alt + 5) / 13, 0, 1);
-  const night = alt < -5;
-  rs.setProperty("--stars", clamp((-alt - 4) / 8, 0, 1).toFixed(2));
-  rs.setProperty("--hill", mixHex("#070b18", "#31503c", dayness)); rs.setProperty("--hill2", mixHex("#0a1022", "#3f6349", dayness));
-  rs.setProperty("--frame", mixHex("#5e5a52", "#e6e0d2", dayness));
-  rs.setProperty("--halo", `rgb(190 215 255 / ${(dayness * .22).toFixed(2)})`);
-  $("orb").classList.toggle("moon", night);
-  rs.setProperty("--ox", night ? "72%" : clamp(50 + (solar - 12) * 7.500, 8, 92).toFixed(1) + "%");
-  rs.setProperty("--oy", night ? "24%" : clamp(74 - alt * 2.2, 10, 96).toFixed(1) + "%");
-  rs.setProperty("--ray", night ? "rgb(170 195 255 / .16)" : `rgb(255 ${Math.round(lerp(196, 236, dayness))} ${Math.round(lerp(140, 200, dayness))} / .34)`);
-  rs.setProperty("--rays", (night ? .55 : alt > 1 ? dayness : 0).toFixed(2));
-  relight();
-}
-function relight() {   // how bright the room is: daylight plus the lamp
-  const on = body.classList.contains("lamp-on");
-  rs.setProperty("--lum", clamp(.3 + dayness * .58 + (on ? .3 * (1 - dayness * .7) : 0), 0, .96).toFixed(2));
-  rs.setProperty("--air", mixHex("#050609", "#12151d", clamp(dayness * .8 + (on ? .2 : 0), 0, 1)));
-}
-function setLamp(on, save) {
-  body.classList.toggle("lamp-on", on);
-  if (save) { try { localStorage.setItem("lamp", on ? "1" : "0"); } catch {} }
-  relight();
-}
-paintRoom(); setInterval(paintRoom, 60000);
-{ let saved = null; try { saved = localStorage.getItem("lamp"); } catch {} setLamp(saved ? saved === "1" : dayness < .5, false); }
-
-/* ============ discord status (through Lanyard) ============ */
-// Your Discord user id. Empty = the Discord widget and window stay hidden.
-// The account has to be in the Lanyard Discord server (discord.gg/lanyard) for this to work.
-const DISCORD_ID = "__DISCORD_ID__";
-const DC_STATUS = { online: ["online", "#3ba55d"], idle: ["idle", "#f0b232"], dnd: ["busy", "#f23f43"], offline: ["offline", "#80848e"] };
-function renderDiscord(d) {
-  const u = d.discord_user || {}, [word, color] = DC_STATUS[d.discord_status] || DC_STATUS.offline;
-  const name = u.global_name || u.display_name || u.username || "discord";
-  const acts = d.activities || [], custom = acts.find((a) => a.type === 4), game = acts.find((a) => a.type === 0);
-  let kind = "", what = "";
-  if (d.listening_to_spotify && d.spotify) { kind = "listening to"; what = `${d.spotify.song} · ${d.spotify.artist}`; }
-  else if (game) { kind = "playing"; what = game.name; }
-  else if (custom && custom.state) { kind = "status"; what = custom.state; }
-  document.querySelectorAll("[data-dc]").forEach((el) => { el.hidden = false; });
-  each("dc-dot", (el) => { el.style.background = color; el.style.boxShadow = `0 0 .9em ${color}`; });
-  setText("dc-v", word); setText("dc-s", what ? `${kind} ${what}` : name);
-  const avatar = u.avatar ? `https://cdn.discordapp.com/avatars/${encodeURIComponent(u.id)}/${encodeURIComponent(u.avatar)}.png?size=128` : "https://cdn.discordapp.com/embed/avatars/0.png";
-  const html = `<div class="dcc"><span class="av"><img src="${esc(avatar)}" alt="" referrerpolicy="no-referrer"><i style="--c:${color}"></i></span><div><b>${esc(name)}</b><span>${esc(word)}</span></div></div>
-    ${what ? `<div class="dc-act"><small>${esc(kind)}</small>${esc(what)}</div>` : ""}`;
-  const card = $("dc-card");
-  if (card._html !== html) { card.innerHTML = html; card._html = html; }
-  ow("dc").hidden = false;
-}
-async function pollDiscord() {
-  if (!document.hidden) {
-    try { const r = await fetch(`https://api.lanyard.rest/v1/users/${DISCORD_ID}`, { cache: "no-store" }); const j = r.ok ? await r.json() : null; if (j && j.success) renderDiscord(j.data); } catch {}
-  }
-  setTimeout(pollDiscord, 12000);
-}
-if (/^\d{15,22}$/.test(DISCORD_ID)) pollDiscord();
-
-/* ============ the look chosen in the admin panel is this laptop's wallpaper ============ */
-const LOOKS = {
-  aurora: ["#7c8cff", "#36e0c2", "#070a12", "aurora"], night: ["#6ea4ff", "#3d6fd6", "#06080f", "sky"],
-  northern: ["#4ade80", "#22d3ee", "#04100d", "p-northern"], tokyo: ["#f472b6", "#22d3ee", "#0b0618", "p-tokyo"],
-  lake: ["#7dd3fc", "#818cf8", "#060c12", "p-lake"], cabin: ["#ff9f5a", "#ffd27a", "#0d0806", "p-cabin"],
-};
-function applyLook(d) {
-  const t = LOOKS[d && d.theme] || LOOKS.aurora;
-  const acc = d && /^#[0-9a-f]{6}$/i.test(d.accent || "") ? d.accent : t[0], bg = (d && d.bg) || t[3];
-  rs.setProperty("--acc", acc); rs.setProperty("--acc2", t[1]);
-  let wall;
-  if (/^p-[a-z]+$/.test(bg)) wall = `url("img/bg/${bg.slice(2)}.jpg")`;
-  else if (bg === "sky") wall = `url("img/backdrop.jpg")`;
-  else if (bg === "solid") wall = `linear-gradient(160deg, color-mix(in srgb, ${acc} 16%, ${t[2]}), ${t[2]})`;
-  else wall = `radial-gradient(90% 90% at 12% 0%, color-mix(in srgb, ${acc} 55%, transparent), transparent 70%), radial-gradient(70% 80% at 100% 15%, color-mix(in srgb, ${t[1]} 45%, transparent), transparent 70%), ${t[2]}`;
-  rs.setProperty("--wall", wall);
-}
-fetch("/api/look").then((r) => (r.ok ? r.json() : null)).then((j) => j && applyLook(j.design)).catch(() => {});
-
-/* ============ clock ============ */
-const clockFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Berlin", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-const tickClock = () => { const t = clockFmt.format(new Date()).replace(",", ""); if ($("clock").textContent !== t) { $("clock").textContent = t; $("os-clock").textContent = t; } };
-tickClock(); setInterval(tickClock, 5000);
-
-/* ============ live data ============ */
 // A random id per tab, so the server can count who is here right now.
 let visitId = "";
 try { visitId = sessionStorage.getItem("vid") || ""; } catch {}
@@ -917,62 +125,21 @@ if (!/^[a-f0-9]{16}$/.test(visitId)) {
   visitId = [...crypto.getRandomValues(new Uint8Array(8))].map((b) => b.toString(16).padStart(2, "0")).join("");
   try { sessionStorage.setItem("vid", visitId); } catch {}
 }
-const two = (n) => String(n).padStart(2, "0");
-function upText() {
-  if (live.up == null) return "–";
-  const t = Math.floor(live.up + (Date.now() - live.upAt) / 1000);
-  const d = Math.floor(t / 86400), h = Math.floor(t % 86400 / 3600), m = Math.floor(t % 3600 / 60);
-  return `${d ? d + "d " : ""}${two(h)}:${two(m)}:${two(t % 60)}`;
-}
-function flies(n) {
-  n = clamp(n, 1, 9);
-  const box = $("flies");
-  while (box.children.length > n) box.lastChild.remove();
-  while (box.children.length < n) {
-    const i = box.children.length, f = document.createElement("div");
-    f.className = "fly";
-    f.style.cssText = `--dur:${11 + (i * 37 % 9)}s; --del:${-(i * 2.7).toFixed(1)}s; --r:calc(var(--w) * ${(.56 + (i * 13 % 5) * .035).toFixed(3)}); --y:calc(var(--w) * ${(-.16 + (i * 7 % 6) * .06).toFixed(3)})`;
-    f.innerHTML = "<i><b></b></i>";
-    box.append(f);
-  }
-}
-function render(d) {
-  const mc = d.mc || {};
-  each("mc-dot", (el) => { el.className = "dot" + (mc.active ? " on" : ""); });
-  if (mc.active) {
-    setText("mc-v", mc.online ? `${mc.online} playing` : "online");
-    setText("mc-s", mc.online ? `of ${mc.max} · friends only` : "nobody on · friends only");
-  } else { setText("mc-v", "sleeping"); setText("mc-s", "the world is saved"); }
-  if (d.stats) {
-    live.up = d.stats.uptime; live.upAt = Date.now(); live.cpu = d.stats.cpu || 0;
-    setText("up-s", `awake · cpu ${Math.round(live.cpu)}%`); setText("up-v", upText());
-    for (const [k, v] of [["cpu", live.cpu], ["mem", d.stats.mem_pct || 0]]) {
-      setText(k + "-n", Math.round(v) + "%");
-      document.querySelectorAll(`[data-bar="${k}"]`).forEach((b) => { b.style.width = clamp(v, 1.5, 100) + "%"; });
-    }
-  }
-  const v = d.visitors;
-  if (v) {
-    setText("here-v", v.here > 1 ? `${v.here} people here` : "only you here");
-    setText("here-s", `${v.today} today · ${v.total} all time`);
-    setText("here-n", String(v.here)); setText("today-n", String(v.today)); setText("total-n", String(v.total));
-    if (live.here && v.here > live.here) peek("someone just walked in.");
-    live.here = v.here; flies(v.here);
-  }
-}
-let pollTimer = 0;
+let timer = 0;
 async function poll() {
-  clearTimeout(pollTimer);
+  clearTimeout(timer);
   if (!document.hidden) {
-    try { const r = await fetch(`/api/public?id=${visitId}`, { cache: "no-store" }); if (r.ok) render(await r.json()); } catch {}
+    try {
+      const r = await fetch(`/api/public?id=${visitId}`, { cache: "no-store" });
+      const mc = r.ok ? (await r.json()).mc || {} : {}, n = mc.active ? Number(mc.online) || 0 : 0;
+      set("mc", !n ? "" : de ? (n === 1 ? "1 spielt Minecraft" : `${n} spielen Minecraft`) : `${n} playing Minecraft`);
+    } catch { set("mc", ""); }
   }
-  pollTimer = setTimeout(poll, 5000);
+  clearTimeout(timer);
+  timer = setTimeout(poll, 5000);
 }
-document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(); });
-setInterval(() => setText("up-v", upText()), 1000);
-flies(1); poll();
-
-// offline page when the laptop is off (works after one visit while it was on)
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { poll(); run(); } });
+poll();
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
 </script>
 </body>
