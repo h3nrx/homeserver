@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.2
+
+Kamera-Kachel auf der Startseite.
+
+- Die Kamera hat jetzt eine eigene Kachel mit der Anzahl gefundener Kameras. Sie lässt sich wie die anderen verschieben und ausblenden.
+- Auf Servern ohne eingeschaltete Kamera bleibt sie unsichtbar.
+
 ## 1.5.1
 
 Kamera: 30 Bilder/s auch bei wenig Licht.
