@@ -2997,6 +2997,205 @@ async function cameraLive(req, res, q) {
   await pump;
 }
 
+/* ---- time-lapse ---- */
+// One picture every few seconds, so a whole day fits in a short video. Without
+// an end time it starts dense; when there are enough pictures every second one
+// is thrown away and the interval doubles. So the space needed has a fixed limit.
+// The pictures are deleted once the video exists. Only for signed-in admins.
+const TL_DIR = path.join(FILES_DIR, ".panel", "timelapse");
+const TL_ID = /^[a-f0-9]{12}$/;
+const TL_FPS = 30, TL_LENS = [15, 30, 60, 120], TL_MAX_H = 168, TL_MIN_FREE = 3 * GB;
+const TL_UNIT = +(process.env.TL_UNIT || 3600e3);
+const tl = new Map();
+const tlDir = (id, ...more) => path.join(TL_DIR, id, ...more);
+const tlWait = (ms) => new Promise((r) => setTimeout(r, ms));
+async function tlSave(it) {
+  if (!tl.has(it.id)) return;
+  const { busy, lost, ...o } = it, f = tlDir(it.id, "item.json");
+  await fsp.writeFile(`${f}.tmp`, JSON.stringify(o));
+  await fsp.rename(`${f}.tmp`, f);
+}
+const tlFrames = async (id) => (await fsp.readdir(tlDir(id, "f")).catch(() => [])).filter((x) => /^\d{8}\.jpg$/.test(x)).sort();
+const tlView = ({ id, name, dev, started, until, ended, state, n, every, len, error, size, seconds, lost, full }) =>
+  ({ id, name, dev, started, until, ended, state, n, every, len, error, size, seconds, full: !!full, lost: lost && Date.now() - lost > 15e3 ? lost : 0 });
+function camScanList() {
+  return new Promise((resolve) => {
+    const r = http.get({ socketPath: CAM_SOCK, path: "/scan", timeout: 8000, agent: false }, (up) => {
+      const parts = [];
+      up.on("data", (c) => parts.push(c));
+      up.on("error", () => resolve([]));
+      up.on("end", () => { try { resolve(JSON.parse(Buffer.concat(parts)).cameras || []); } catch { resolve([]); } });
+    });
+    r.on("timeout", () => r.destroy());
+    r.on("error", () => resolve([]));
+  });
+}
+async function tlRecord(it) {
+  if (it.busy) return;
+  it.busy = true;
+  try {
+    let frames = await tlFrames(it.id);
+    let seq = frames.length ? parseInt(frames[frames.length - 1], 10) + 1 : 1;
+    it.n = frames.length;
+    let warm = Date.now() + 3000, next = 0, looked = 0;      // the exposure needs a moment first
+    while (it.state === "rec") {
+      const now = Date.now();
+      if (it.until && now >= it.until) break;
+      try {
+        // also asked for between two pictures: that keeps the camera open
+        const pic = await camPicture(it.dev, 1, 0);
+        if (it.lost) { it.lost = 0; warm = Date.now() + 3000; }
+        const t = Date.now();
+        if (it.state === "rec" && t >= warm && t >= next) {
+          const name = `${String(seq++).padStart(8, "0")}.jpg`;
+          await fsp.writeFile(tlDir(it.id, "f", `${name}.tmp`), pic.body);
+          await fsp.rename(tlDir(it.id, "f", `${name}.tmp`), tlDir(it.id, "f", name));
+          frames.push(name);
+          next = next && t - next < it.every ? next + it.every : t + it.every;
+          if (frames.length > it.len * TL_FPS + 5) {
+            const keep = [];
+            for (const [i, x] of frames.entries()) { if (i % 2) await fsp.unlink(tlDir(it.id, "f", x)).catch(() => {}); else keep.push(x); }
+            frames = keep;
+            it.every *= 2;
+            next = t + it.every;
+            await tlSave(it);
+          }
+          it.n = frames.length;
+          if (seq % 50 === 0 && (await diskInfo()).free < TL_MIN_FREE) { it.full = true; break; }
+        }
+      } catch (e) {
+        if (e.code === "ENOSPC") { it.full = true; break; }
+        it.lost = it.lost || Date.now();
+        // after a restart or replugging the same camera can have another number
+        if (Date.now() - looked > 10e3) {
+          looked = Date.now();
+          const list = (await camScanList()).filter((c) => c.ok && c.name === it.name);
+          if (list.length && !list.some((c) => c.id === it.dev)) it.dev = list[0].id;
+        }
+      }
+      const left = Math.min(it.lost ? 2000 : Math.max(next - Date.now(), 0), it.until ? Math.max(it.until - Date.now(), 0) : 2000, 2000);
+      await tlWait(Math.max(left, 100));
+    }
+    if (it.state === "rec") it.state = "making";
+    if (!it.ended) it.ended = Date.now();
+    await tlSave(it);
+  } finally { it.busy = false; }
+  if (it.state === "making") await tlMake(it);
+}
+async function tlMake(it) {
+  if (it.busy) return;
+  it.busy = true;
+  try {
+    it.state = "making";
+    it.error = "";
+    const n = it.n = (await tlFrames(it.id)).length;
+    if (n < 10) fail(422, "The recording was too short.");
+    const fps = Math.min(TL_FPS, Math.max(5, Math.round(n / 5)));    // few pictures: not over in a blink
+    for (let tries = 0; ; tries++) {
+      try {
+        const r = await media("/internal/timelapse", { method: "POST", body: { id: it.id, fps }, timeout: 45 * 60e3 });
+        it.size = r.size;
+        it.seconds = r.seconds;
+        break;
+      } catch (e) {
+        if (tries >= 8 || ![502, 503].includes(e.status)) throw e;   // the video service is restarting
+        await tlWait(15e3);
+      }
+    }
+    it.state = "ready";
+    await tlSave(it);
+    await fsp.rm(tlDir(it.id, "f"), { recursive: true, force: true });
+  } catch (e) {
+    it.state = "failed";
+    it.error = e instanceof HttpError ? e.message : "Something went wrong on the server.";
+    if (!(e instanceof HttpError)) console.error("timelapse:", e);
+    await tlSave(it).catch(() => {});
+  } finally { it.busy = false; }
+}
+const tlRun = (it) => tlRecord(it).catch((e) => { console.error("timelapse:", e); it.state = "failed"; it.error = "Something went wrong on the server."; tlSave(it).catch(() => {}); });
+const tlLoaded = (async () => {
+  for (const id of await fsp.readdir(TL_DIR).catch(() => [])) {
+    if (!TL_ID.test(id)) continue;
+    try { tl.set(id, { ...JSON.parse(await fsp.readFile(tlDir(id, "item.json"), "utf8")), busy: false, lost: 0 }); } catch { continue; }
+  }
+  // the panel or the laptop was restarted in between: carry on
+  for (const it of tl.values()) { if (it.state === "rec") tlRun(it); else if (it.state === "making") tlMake(it); }
+})();
+async function tlFile(req, res, file, type, download) {
+  const st = await fsp.stat(file).catch(() => null);
+  if (!st) fail(404, "Not found.");
+  const h = { "Content-Type": type, "Cache-Control": "private, no-cache", "Accept-Ranges": "bytes" };
+  if (download) h["Content-Disposition"] = `attachment; filename="${download}"`;
+  let from = 0, to = st.size - 1, status = 200;
+  const r = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || "");
+  if (r && (r[1] || r[2])) {
+    from = r[1] ? +r[1] : Math.max(0, st.size - +r[2]);
+    to = r[1] && r[2] ? Math.min(+r[2], to) : to;
+    if (from > to) { res.writeHead(416, { "Content-Range": `bytes */${st.size}` }); return res.end(); }
+    status = 206;
+    h["Content-Range"] = `bytes ${from}-${to}/${st.size}`;
+  }
+  h["Content-Length"] = to - from + 1;
+  res.writeHead(status, h);
+  if (req.method === "HEAD") return res.end();
+  await pipeline(fs.createReadStream(file, { start: from, end: to }), res).catch(() => {});
+}
+async function timelapseRoutes(req, res, p, m, url) {
+  await tlLoaded;
+  if (p === "/api/camera/timelapse" && m === "GET") return send(res, 200, { items: [...tl.values()].sort((a, b) => b.started - a.started).map(tlView) });
+  if (p === "/api/camera/timelapse" && m === "POST") {
+    const o = await readJson(req), hours = Number(o.hours) || 0;
+    if (!/^video\d{1,3}$/.test(o.dev || "")) fail(400, "Invalid camera.");
+    if (hours < 0 || hours > TL_MAX_H || (hours && hours < 0.05)) fail(400, "Recordings can be 3 minutes to 7 days long.");
+    if (!TL_LENS.includes(o.len)) fail(400, "Invalid value.");
+    const taken = () => [...tl.values()].some((x) => x.state === "rec" && x.dev === o.dev);
+    if (taken()) fail(409, "This camera is already recording.");
+    if (tl.size >= 60) fail(409, "Too many recordings. Delete some first.");
+    if ((await diskInfo()).free < TL_MIN_FREE + GB) fail(507, "There isn't enough free space on the disk.");
+    const c = (await camScanList()).find((x) => x.id === o.dev);
+    if (!c) fail(404, "The camera was unplugged.");
+    await camPicture(o.dev, 1, 0);      // camera errors show up right away
+    if (taken()) fail(409, "This camera is already recording.");
+    const now = Date.now(), dur = Math.round(hours * TL_UNIT);
+    const it = { id: crypto.randomBytes(6).toString("hex"), dev: o.dev, name: c.name, started: now, until: dur ? now + dur : null, ended: null, len: o.len,
+      every: dur ? Math.max(500, Math.round(dur / (o.len * TL_FPS))) : 1000, state: "rec", n: 0, error: "", size: 0, seconds: 0 };
+    tl.set(it.id, it);
+    try { await fsp.mkdir(tlDir(it.id, "f"), { recursive: true }); await tlSave(it); } catch (e) { tl.delete(it.id); throw e; }
+    tlRun(it);
+    return send(res, 200, tlView(it));
+  }
+  const [, id, act] = /^\/api\/camera\/timelapse\/([a-f0-9]{12})(?:\/(stop|retry|video|poster))?$/.exec(p) || [];
+  const it = tl.get(id);
+  if (!it) fail(404, "Not found.");
+  if (act === "stop" && m === "POST") {
+    if (it.state !== "rec") fail(409, "This recording has already stopped.");
+    it.state = "making";
+    it.ended = Date.now();
+    await tlSave(it);
+    return send(res, 200, tlView(it));
+  }
+  if (act === "retry" && m === "POST") {
+    if (it.state !== "failed" || it.busy) fail(409, "Not allowed.");
+    it.state = "making";
+    tlMake(it);
+    return send(res, 200, tlView(it));
+  }
+  if (act === "video" && (m === "GET" || m === "HEAD")) {
+    const day = new Date(it.started).toISOString().slice(0, 10);
+    return tlFile(req, res, tlDir(id, "video.mp4"), "video/mp4", url.searchParams.get("dl") ? `zeitraffer-${day}-${id.slice(0, 4)}.mp4` : "");
+  }
+  if (act === "poster" && m === "GET") return tlFile(req, res, tlDir(id, "poster.jpg"), "image/jpeg", "");
+  if (!act && m === "DELETE") {
+    if (it.state === "making") fail(409, "The video is still being made.");
+    it.state = "deleted";
+    tl.delete(id);
+    for (let i = 0; it.busy && i < 80; i++) await tlWait(100);      // let the recorder finish its last picture
+    await fsp.rm(tlDir(id), { recursive: true, force: true });
+    return send(res, 200, { ok: true });
+  }
+  fail(405, "Not allowed.");
+}
+
 /* ================================ Router ================================ */
 async function route(req, res) {
   const url = new URL(req.url, "http://x");
@@ -3076,6 +3275,7 @@ async function route(req, res) {
   if (p === "/api/power") return powerRoutes(req, res, p, m);
   if (p === "/api/camera" && m === "GET") return send(res, 200, { enabled: !!(await fsp.stat(CAM_SOCK).catch(() => null)) });
   if (p === "/api/camera/live" && m === "GET") return cameraLive(req, res, url.searchParams);
+  if (p === "/api/camera/timelapse" || p.startsWith("/api/camera/timelapse/")) return timelapseRoutes(req, res, p, m, url);
   if (p.startsWith("/api/camera/")) return cameraRoutes(req, res, p, m, url);
   if (p === "/api/update" || p === "/api/update/install" || p === "/api/update/key") return updateRoutes(req, res, p, m, url);
   if (p === "/api/clips" || p.startsWith("/api/clips/")) return clipRoutes(req, res, p, m, url);

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.8.0
+
+Zeitraffer im Kamera-Tab.
+
+- Aufnehmen drücken, Stopp drücken, fertig ist das Video. Oder vorher eine Dauer einstellen (1 Stunde bis 7 Tage oder eigene Zeit), dann stoppt es von selbst.
+- Länge des fertigen Videos wählbar: 15 Sekunden bis 2 Minuten.
+- Braucht wenig Platz: Es wird nur alle paar Sekunden ein Bild gemacht, und die Einzelbilder werden gelöscht, sobald das Video fertig ist.
+- Läuft auf dem Server weiter, auch wenn die Seite zu ist, und macht nach einem Neustart oder Update weiter.
+- Videos direkt ansehen, herunterladen und löschen. Nur im Admin sichtbar.
+
 ## 1.7.0
 
 Neue öffentliche Startseite: Höhenlinien statt Laptop.

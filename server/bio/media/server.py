@@ -1936,6 +1936,50 @@ def _pv_run(fid: str, src: Path, sig: str) -> None:
             _pv_busy.discard(fid)
 
 
+# ---- camera time-lapse: single pictures -> one small video (see panel/server.js) ----
+TL = FILES / ".panel" / "timelapse"
+TL_ID = re.compile(r"^[a-f0-9]{12}$")
+_tl_lock = threading.Lock()
+
+
+def make_timelapse(o: dict) -> dict:
+    tid = str(o.get("id", ""))
+    if not TL_ID.match(tid):
+        raise ValueError("Invalid recording.")
+    fps = min(max(int(o.get("fps") or 30), 5), 30)
+    d, out = TL / tid, TL / tid / "video.mp4"
+    with _tl_lock:
+        pics = sorted((d / "f").glob("*.jpg"))
+        if len(pics) < 2:
+            raise LookupError("There are no pictures.")
+        size = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v", "-show_entries", "stream=width,height", "-of", "csv=p=0", str(pics[0])],
+                              capture_output=True, text=True, timeout=60).stdout.strip().split(",")
+        w, h = (int(size[0]), int(size[1])) if len(size) >= 2 and size[0].isdigit() and size[1].isdigit() else (1280, 720)
+        tmp = d / "video.tmp.mp4"
+        proc = subprocess.Popen(
+            ["nice", "-n", "15", "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "image2pipe", "-framerate", str(fps), "-c:v", "mjpeg", "-i", "pipe:0",
+             "-an", "-vf", f"scale={w // 2 * 2}:{h // 2 * 2}:in_range=pc:out_range=tv,format=yuv420p", "-c:v", "libx264", "-preset", "fast", "-crf", "25",
+             "-maxrate", "8M", "-bufsize", "16M", "-threads", "2", "-movflags", "+faststart", str(tmp)],
+            stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            for p in pics:
+                proc.stdin.write(p.read_bytes())
+            proc.stdin.close()
+            code = proc.wait(timeout=1800)
+        except (OSError, subprocess.TimeoutExpired):
+            code = -1
+        finally:
+            proc.kill()
+            proc.wait()
+        if code != 0 or not tmp.is_file() or tmp.stat().st_size < 500:
+            tmp.unlink(missing_ok=True)
+            raise RuntimeError("The video couldn't be made.")
+        (d / "poster.jpg").write_bytes(pics[len(pics) // 2].read_bytes())
+        tmp.rename(out)
+    log(f"timelapse {tid}: {len(pics)} pictures, {out.stat().st_size // 1024} KB")
+    return {"size": out.stat().st_size, "seconds": round(len(pics) / fps, 1)}
+
+
 # ================================= http =================================
 live_slots = threading.BoundedSemaphore(2)   # live camera viewers at the same time
 
@@ -2066,6 +2110,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(200, {"ok": True})
         if p == ["live"] and m == "POST":
             return self.live(qs)
+        if p == ["timelapse"] and m == "POST":
+            return self.send_json(200, make_timelapse(self.read_json()))
         if p == ["downloads"] and m == "GET":
             kind = (qs.get("kind") or ["download"])[0]
             return self.send_json(200, dl_list(kind if kind in ("compress", "convert", "cutout", "upscale") else "download"))

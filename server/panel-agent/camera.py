@@ -10,7 +10,7 @@ Talks HTTP on a unix socket that only the panel can reach:
   GET /set?dev=video0&name=sharpness&value=9 change one of them
 
 The camera is open only while frames are being asked for and is closed a few
-seconds after the last request. Nothing is recorded, there is no sound.
+seconds after the last request. Nothing is stored here, there is no sound.
 Pictures are passed on exactly as the camera makes them (MJPEG).
 """
 from __future__ import annotations
