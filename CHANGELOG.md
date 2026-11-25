@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.4
+
+Sicherheitsupdate.
+
+- Der Server schreibt weniger Protokolle mit, vorhandene Protokolle der Website und des Media-Dienstes werden beim Update geleert.
+- Gelöschtes ist sofort und vollständig weg.
+
 ## 1.7.3
 
 Ubuntu-Updates im Admin.

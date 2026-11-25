@@ -1106,6 +1106,50 @@ async function doImport() {
 setInterval(() => importJobs(), 15000).unref();
 setTimeout(() => importJobs(), 5000).unref();
 
+// The copy in the file host is the same data on disk, so it has the same inode.
+const inode = (file) => fsp.stat(file).then((s) => `${s.dev}:${s.ino}`, () => null);
+const jobFile = (j) => path.join(DOWNLOADS_DIR, j.id, path.basename(j.file || "-"));
+async function copiesOf(ino) {
+  if (!ino) return [];
+  const list = await withIndex((idx) => Object.entries(idx).filter(([, e]) => e.from === "download" && e.folder === KIND_FOLDER.download));
+  const out = [];
+  for (const [id, e] of list) if ((await inode(path.join(FILES_DIR, id, e.name))) === ino) out.push(id);
+  return out;
+}
+// Deleting a download deletes its copy too, unless it was moved to another folder.
+async function deleteDownload(id) {
+  const j = await media(`/internal/downloads/${id}`);
+  const ino = j.file ? await inode(jobFile(j)) : null;
+  await media(`/internal/downloads/${id}`, { method: "DELETE" });
+  if (importing) await importing;        // a copy may have been made this very moment
+  const gone = await copiesOf(ino);
+  if (gone.length) await withIndex(async (idx, save) => { for (const x of gone) delete idx[x]; await save(); });
+  await Promise.all(gone.map((x) => fsp.rm(path.join(FILES_DIR, x), { recursive: true, force: true })));
+}
+async function renameDownload(id, title) {
+  if (importing) await importing;
+  const j = await media(`/internal/downloads/${id}`, { method: "PATCH", body: { title } });
+  const name = cleanFileName(j.file, "result.bin");
+  for (const x of await copiesOf(await inode(jobFile(j)))) {
+    await withIndex(async (idx, save) => {
+      const e = idx[x];
+      if (!e || e.name === name) return;
+      await fsp.rename(path.join(FILES_DIR, x, e.name), path.join(FILES_DIR, x, name));
+      e.name = name;
+      await save();
+    });
+  }
+  return j;
+}
+// The other way round: files deleted in the file host take their download along.
+async function deleteJobsOf(files) {
+  const inos = new Set((await Promise.all(files.filter(([, e]) => e.from === "download").map(([id, e]) => inode(path.join(FILES_DIR, id, e.name))))).filter(Boolean));
+  if (!inos.size) return;
+  let d;
+  try { d = await media("/internal/downloads", { timeout: 4000 }); } catch { return; }
+  for (const j of d.jobs) if (j.file && inos.has(await inode(jobFile(j)))) await media(`/internal/downloads/${j.id}`, { method: "DELETE" }).catch(() => {});
+}
+
 /* ---- upload keys (iPad / iPhone shortcut) ---- */
 // A key can only upload into "Uploads". Only its SHA-256 is stored.
 const KEYS_FILE = path.join(FILES_DIR, ".panel", "upload-keys.json");
@@ -1398,12 +1442,13 @@ async function fileRoutes(req, res, p, m, url) {
     const b = await readJson(req, 65536);
     const ids = Array.isArray(b.files) ? b.files.filter((x) => typeof x === "string" && FILE_ID.test(x)).slice(0, 2000) : [];
     const gone = await withIndex(async (idx, save) => {
-      const out = ids.filter((id) => idx[id]);
-      for (const id of out) delete idx[id];
+      const out = ids.filter((id) => idx[id]).map((id) => [id, idx[id]]);
+      for (const [id] of out) delete idx[id];
       await save();
       return out;
     });
-    await Promise.all(gone.map((id) => fsp.rm(path.join(FILES_DIR, id), { recursive: true, force: true })));
+    await deleteJobsOf(gone);
+    await Promise.all(gone.map(([id]) => fsp.rm(path.join(FILES_DIR, id), { recursive: true, force: true })));
     return send(res, 200, { ok: true, deleted: gone.length });
   }
 
@@ -1440,12 +1485,14 @@ async function fileRoutes(req, res, p, m, url) {
     const id = one[1];
     if (!FILE_ID.test(id)) fail(400, "Invalid file id.");
     const found = await withIndex(async (idx, save) => {
-      if (!idx[id]) return false;
+      const e = idx[id];
+      if (!e) return false;
       delete idx[id];
       await save();
-      return true;
+      return e;
     });
     if (!found) fail(404, "File not found.");
+    await deleteJobsOf([[id, found]]);
     await fsp.rm(path.join(FILES_DIR, id), { recursive: true, force: true });
     return send(res, 200, { ok: true });
   }
@@ -1894,7 +1941,8 @@ async function downloadRoutes(req, res, p, m) {
   }
   const mm = p.match(/^\/api\/downloads\/([^/]+)(\/clip)?$/);
   if (!mm || !DL_ID.test(mm[1])) fail(404, "Not found.");
-  if (!mm[2] && m === "DELETE") return send(res, 200, await media(`/internal/downloads/${mm[1]}`, { method: "DELETE" }));
+  if (!mm[2] && m === "DELETE") { await deleteDownload(mm[1]); return send(res, 200, { ok: true }); }
+  if (!mm[2] && m === "PATCH") return send(res, 200, await renameDownload(mm[1], String((await readJson(req)).title || "").slice(0, 200)));
   if (mm[2] && m === "POST") {
     const j = await media(`/internal/downloads/${mm[1]}`);
     const ext = String(j.file || "").split(".").pop().toLowerCase();

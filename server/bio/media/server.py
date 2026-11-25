@@ -23,6 +23,7 @@ import re
 import ipaddress
 import secrets
 import select
+import signal
 import socket
 import shutil
 import subprocess
@@ -811,7 +812,7 @@ def web_retry(jid: str, d: Path, cmd: list[str], url: str) -> Path | None:
                 return None
         for x in d.iterdir():
             x.unlink(missing_ok=True)
-        p = subprocess.Popen([*cmd[:-2], "--referer", page, "--", link], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, env=child_env())
+        p = subprocess.Popen([*cmd[:-2], "--referer", page, "--", link], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, env=child_env(), start_new_session=True)
         _dl_procs[jid] = p
         path = None
         try:
@@ -837,11 +838,15 @@ def web_retry(jid: str, d: Path, cmd: list[str], url: str) -> Path | None:
     return None
 
 
+_dl_save_lock = threading.Lock()
+
+
 def dl_save() -> None:
     DL.mkdir(parents=True, exist_ok=True)
-    with _dl_lock:
-        data = json.dumps(list(_dl_jobs.values()))
-    atomic_write(DL_JOBS, data)
+    with _dl_save_lock:                  # an older list must never overwrite a newer one
+        with _dl_lock:
+            data = json.dumps(list(_dl_jobs.values()))
+        atomic_write(DL_JOBS, data)
 
 
 def dl_load() -> None:
@@ -924,7 +929,6 @@ def new_download(b: dict) -> dict:
         _dl_jobs[jid] = job
     dl_save()
     _dl_q.put(jid)
-    log(f"download {jid}: {plat} as {fmt}")
     return dict(job)
 
 
@@ -993,7 +997,7 @@ def run_download(jid: str) -> None:
     d.mkdir(parents=True, exist_ok=True)
     fmt, o, url = job["format"], job["opts"], job["url"]
     dl_set(jid, save=True, state="downloading")
-    cmd = [sys.executable, "-m", "yt_dlp", "--ignore-config", "--no-warnings", "--no-playlist", "--newline",
+    cmd = [sys.executable, "-m", "yt_dlp", "--ignore-config", "--no-cache-dir", "--no-warnings", "--no-playlist", "--newline",
            "--socket-timeout", "20", "--max-filesize", "2G", "--windows-filenames", "--trim-filenames", "90",
            "--no-mtime", "-o", f"{d}/%(title).70B.%(ext)s", "-o", f"thumbnail:{d}/thumb",
            "--write-thumbnail", "--convert-thumbnails", "jpg",
@@ -1021,7 +1025,7 @@ def run_download(jid: str) -> None:
     cmd += ["--", url]
 
     path, err_lines = None, []
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=child_env())
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=child_env(), start_new_session=True)
     _dl_procs[jid] = p
     t_err = threading.Thread(target=lambda: err_lines.extend(p.stderr.read().splitlines()), daemon=True)
     t_err.start()
@@ -1126,9 +1130,13 @@ def run_download(jid: str) -> None:
     for leftover in d.iterdir():
         if leftover not in (path, thumb):
             leftover.unlink(missing_ok=True)
+    with _dl_lock:
+        gone = jid not in _dl_jobs
+    if gone:
+        shutil.rmtree(d, ignore_errors=True)
+        return
     dl_set(jid, save=True, state="done", progress=1, file=path.name, size=path.stat().st_size,
            thumb=thumb.exists(), note=note, finished=int(time.time() * 1000), speed="", eta="")
-    log(f"download {jid} done: {path.name} ({path.stat().st_size // 1024} KB)")
 
 
 # ---------------------------- discord compressor ----------------------------
@@ -1168,7 +1176,6 @@ def new_compress(b: dict) -> dict:
         _dl_jobs[jid] = job
     dl_save()
     _dl_q.put(jid)
-    log(f"compress {jid}: {name} -> {target} MB {'mp3' if audio else 'mp4'}")
     return dict(job)
 
 
@@ -1292,7 +1299,6 @@ def run_compress(jid: str) -> None:
     src.unlink(missing_ok=True)
     dl_set(jid, save=True, state="done", progress=1, file=out.name, size=size, thumb=thumb.exists(),
            finished=int(time.time() * 1000), cut_dur=round(dur, 2))
-    log(f"compress {jid} done: {o['orig'] // 1024} KB -> {size // 1024} KB")
 
 
 # ------------------------------ file converter ------------------------------
@@ -1357,7 +1363,6 @@ def new_convert(b: dict) -> dict:
         _dl_jobs[jid] = job
     dl_save()
     _dl_q.put(jid)
-    log(f"convert {jid}: {len(ins)} file(s) {sorted(kinds)} -> {to}")
     return dict(job)
 
 
@@ -1520,7 +1525,6 @@ def run_convert(jid: str) -> None:
             shutil.rmtree(p, ignore_errors=True) if p.is_dir() else p.unlink(missing_ok=True)
     dl_set(jid, save=True, state="done", progress=1, file=final.name, size=final.stat().st_size, thumb=thumb.exists(),
            outputs=len(outs), finished=int(time.time() * 1000))
-    log(f"convert {jid} done: {final.name} ({final.stat().st_size // 1024} KB)")
 
 
 # --------------------------- background remover ---------------------------
@@ -1629,7 +1633,6 @@ def new_cutout(b: dict) -> dict:
         _dl_jobs[jid] = job
     dl_save()
     _dl_q.put(jid)
-    log(f"cutout {jid}: {len(ins)} picture(s), bg {bg}{', crop' if crop else ''}")
     return dict(job)
 
 
@@ -1710,7 +1713,6 @@ def run_cutout(jid: str) -> None:
             shutil.rmtree(p, ignore_errors=True) if p.is_dir() else p.unlink(missing_ok=True)
     dl_set(jid, save=True, state="done", progress=1, file=final.name, size=final.stat().st_size, thumb=thumb.exists(),
            outputs=len(outs), finished=int(time.time() * 1000))
-    log(f"cutout {jid} done: {final.name}")
 
 
 # ============================== Image upscaler ==============================
@@ -1860,7 +1862,6 @@ def new_upscale(b: dict) -> dict:
         _dl_jobs[jid] = job
     dl_save()
     _dl_q.put(jid)
-    log(f"upscale {jid}: {len(ins)} picture(s), {scale}x {fmt}")
     return dict(job)
 
 
@@ -1947,7 +1948,6 @@ def run_upscale(jid: str) -> None:
             shutil.rmtree(p, ignore_errors=True) if p.is_dir() else p.unlink(missing_ok=True)
     dl_set(jid, save=True, state="done", progress=1, file=final.name, size=final.stat().st_size, thumb=thumb.exists(),
            outputs=len(outs), dims=sizes[0] if sizes else "", finished=int(time.time() * 1000))
-    log(f"upscale {jid} done: {final.name} ({sizes[0] if sizes else ''})")
 
 
 def dl_worker() -> None:
@@ -1958,7 +1958,6 @@ def dl_worker() -> None:
                 kind = (_dl_jobs.get(jid) or {}).get("kind")
             {"compress": run_compress, "convert": run_convert, "cutout": run_cutout, "upscale": run_upscale}.get(kind, run_download)(jid)
         except Exception as e:
-            log(f"download {jid} failed: {e}")
             dl_set(jid, save=True, state="failed", error=str(e)[:220], speed="", eta="")
             with _dl_lock:
                 still = jid in _dl_jobs
@@ -1972,9 +1971,36 @@ def delete_download(jid: str) -> None:
             raise LookupError("Download not found.")
     p = _dl_procs.get(jid)
     if p and p.poll() is None:
+        try:                             # with everything it started (ffmpeg)
+            if os.getpgid(p.pid) == p.pid:
+                os.killpg(p.pid, signal.SIGKILL)
+        except OSError:
+            pass
         p.kill()
     shutil.rmtree(DL / jid, ignore_errors=True)
     dl_save()
+
+
+def rename_download(jid: str, raw) -> dict:
+    title = re.sub(r"[\x00-\x1f\x7f]", "", str(raw or "")).strip()[:120]
+    if not title:
+        raise ValueError("Give it a title.")
+    with _dl_lock:
+        j = _dl_jobs.get(jid)
+        if not j or j.get("kind", "download") != "download":
+            raise LookupError("Download not found.")
+        if j["state"] != "done":
+            raise ValueError("Wait until it's finished.")
+        src = DL / jid / j["file"]
+        new = src.with_name(clean_name(title, src.suffix.lstrip(".")))
+        if new.name == "thumb.jpg":
+            new = src.with_name("thumb_.jpg")
+        if new != src:
+            src.rename(new)
+        j.update(title=title, file=new.name)
+        out = dict(j)
+    dl_save()
+    return out
 
 
 def dl_cleanup() -> None:
@@ -2315,6 +2341,8 @@ class Handler(BaseHTTPRequestHandler):
             if m == "DELETE":
                 delete_download(p[1])
                 return self.send_json(200, {"ok": True})
+            if m == "PATCH":
+                return self.send_json(200, rename_download(p[1], self.read_json().get("title")))
             if m == "GET":
                 with _dl_lock:
                     j = _dl_jobs.get(p[1])

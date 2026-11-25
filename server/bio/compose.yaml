@@ -2,6 +2,9 @@ services:
   bio:
     image: nginx:alpine
     container_name: bio
+    logging:
+      driver: json-file
+      options: { max-size: "1m", max-file: "1" }
     restart: unless-stopped
     read_only: true
     depends_on:
@@ -59,6 +62,9 @@ services:
     build: ./media
     image: __SLUG__-media
     container_name: media
+    logging:
+      driver: json-file
+      options: { max-size: "1m", max-file: "1" }
     restart: unless-stopped
     user: "1000:1000"
     read_only: true
