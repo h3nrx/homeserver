@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.3
+
+Ubuntu-Updates im Admin.
+
+- Die Updates-Seite zeigt, ob es Updates für Ubuntu gibt, wie viele davon für die Sicherheit sind und ob ein Neustart nötig ist.
+- Installieren per Button. Der Laptop startet dabei nicht von selbst neu.
+
 ## 1.7.2
 
 Mehr Schutz beim Anmelden.

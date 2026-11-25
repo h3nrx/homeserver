@@ -546,6 +546,8 @@ def update_install(p) -> dict:
         raise ValueError("Invalid version.")
     if not UPDATE_SCRIPT.is_file():
         raise ValueError("The updater isn't installed on this server yet.")
+    if sys_status().get("state") in ("starting", "running"):
+        raise ValueError("Ubuntu is being updated right now. Try again in a few minutes.")
     if unit_state(UPDATE_UNIT + ".service") in ("active", "activating", "deactivating"):
         raise ValueError("An update is already running.")
     systemctl("reset-failed", UPDATE_UNIT + ".service")
@@ -623,6 +625,85 @@ def update_key(p) -> dict:
     return {"key": True}
 
 
+# ---- Ubuntu updates: only what "apt upgrade" would do, nothing is removed ----
+SYS_FILE = STATE / "sysupdate.json"
+SYS_UNIT = "homeserver-sysupdate"
+SYS_LOG = "/var/log/homeserver-sysupdate.log"
+SYS_INST = re.compile(r"^Inst (\S+) (?:\[([^\]]*)\] )?\((\S+) ([^\[)]*)")
+SYS_SCRIPT = r"""
+S=/var/lib/panel/sysupdate.json
+say() { printf '{"state":"%s","step":"%s","since":%s,"error":"%s"}' "$1" "$2" "$SINCE" "$3" > "$S.tmp" && chmod 644 "$S.tmp" && mv "$S.tmp" "$S"; }
+export LC_ALL=C DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1 APT_LISTCHANGES_FRONTEND=none
+exec > "$LOG" 2>&1
+A="apt-get -y -o DPkg::Lock::Timeout=900 -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold"
+say running list ""
+$A update || { say failed list "Couldn't load the package list."; exit 1; }
+say running install ""
+$A --with-new-pkgs upgrade || { dpkg --configure -a --force-confdef --force-confold; say failed install "apt reported an error."; exit 1; }
+apt-get clean
+say ok done ""
+"""
+
+
+def sys_status() -> dict:
+    try:
+        st = json.loads(SYS_FILE.read_text())
+    except (OSError, ValueError):
+        return {"state": "idle"}
+    if st.get("state") in ("starting", "running") and unit_state(SYS_UNIT + ".service") not in ("active", "activating"):
+        try:                                    # it may have finished just now
+            st = json.loads(SYS_FILE.read_text())
+        except (OSError, ValueError):
+            pass
+        if st.get("state") in ("starting", "running"):
+            st.update(state="failed", error="It was interrupted.")
+    return st
+
+
+def sys_updates(p) -> dict:
+    if not shutil.which("apt-get"):
+        return {"supported": False}
+    out = {"supported": True, "status": sys_status(), "error": ""}
+    if out["status"].get("state") in ("starting", "running"):
+        return out
+    env = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"}
+    if p.get("refresh"):
+        r = subprocess.run(["systemd-run", "--wait", "--pipe", "--quiet", "--collect", "/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=60", "-o", "APT::Update::Error-Mode=any", "update"],
+                           capture_output=True, text=True, timeout=100, env=env)
+        if r.returncode != 0:
+            out["error"] = "Couldn't load the package list."
+    r = subprocess.run(["apt-get", "-s", "-o", "Debug::NoLocking=1", "--with-new-pkgs", "upgrade"], capture_output=True, text=True, timeout=60, env=env)
+    if r.returncode != 0:
+        out["error"] = "apt reported an error."
+    found = [m for m in map(SYS_INST.match, r.stdout.splitlines()) if m]
+    out["packages"] = [{"name": m[1], "version": m[3], "security": "-security" in m[4]} for m in found][:400]
+    out["reboot"] = Path("/var/run/reboot-required").exists()
+    try:
+        out["checked"] = int(max(Path(x).stat().st_mtime for x in ("/var/lib/apt/lists", "/var/lib/apt/periodic/update-success-stamp") if Path(x).exists()) * 1000)
+    except ValueError:
+        out["checked"] = None
+    return out
+
+
+def sys_install(_p=None) -> dict:
+    if unit_state(UPDATE_UNIT + ".service") in ("active", "activating", "deactivating") or sys_status().get("state") in ("starting", "running"):
+        raise ValueError("An update is already running.")
+    names = {x["name"] for x in sys_updates({}).get("packages", [])}
+    if not names:
+        raise ValueError("Everything is already up to date.")
+    # without live-restore a Docker update stops every container
+    if names & {"docker-ce", "docker.io", "containerd.io", "containerd"} and unit_state(MC_UNIT) == "active" \
+            and run(["docker", "info", "--format", "{{.LiveRestoreEnabled}}"]).stdout.strip() != "true":
+        raise ValueError("Stop Minecraft first. Docker restarts with this update.")
+    systemctl("reset-failed", SYS_UNIT + ".service")
+    since = int(time.time() * 1000)
+    atomic_write(SYS_FILE, json.dumps({"state": "starting", "step": "list", "since": since, "error": ""}))
+    check(run(["systemd-run", f"--unit={SYS_UNIT}", "--collect", "--quiet", "--property=TimeoutStopSec=1800", f"--setenv=SINCE={since}", f"--setenv=LOG={SYS_LOG}",
+               "/bin/bash", "-c", SYS_SCRIPT.replace("$", "$$")], timeout=20), "Starting the update")
+    log(f"ubuntu update: {len(names)} packages")
+    return sys_status()
+
+
 # -------------------------------- commands -------------------------------
 HANDLERS = {
     "mc_status": mc_status,
@@ -633,6 +714,8 @@ HANDLERS = {
     "update_install": update_install,
     "update_release": update_release,
     "update_key": update_key,
+    "sys_updates": sys_updates,
+    "sys_install": sys_install,
     "bot_list": bot_list,
     "bot_info": bot_info,
     "bot_create": bot_create,

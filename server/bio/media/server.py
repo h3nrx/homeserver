@@ -20,12 +20,16 @@ import json
 import os
 import queue
 import re
+import ipaddress
 import secrets
+import select
+import socket
 import shutil
 import subprocess
 import sys
 import threading
 import time
+import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -91,7 +95,7 @@ def update_ytdlp() -> None:
     try:
         MUSIC.mkdir(parents=True, exist_ok=True)
         r = subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--disable-pip-version-check",
-                            "--no-cache-dir", "--upgrade", "--target", str(LIB), "yt-dlp[default]"],
+                            "--no-cache-dir", "--upgrade", "--target", str(LIB), "yt-dlp[default,curl-cffi]"],
                            capture_output=True, text=True, timeout=300, env=child_env())
         if r.returncode == 0:
             v = subprocess.run([sys.executable, "-m", "yt_dlp", "--version"], capture_output=True,
@@ -665,6 +669,174 @@ def platform_of(url: str) -> str | None:
     return next((name for name, rx in PLATFORMS if re.search(rx, host)), None)
 
 
+# ---- any other site: everything goes through a tiny proxy that only connects
+# to the public internet, so no link, redirect or page can reach the home network
+def public_addr(host: str, port: int = 443) -> tuple | None:
+    """Address to connect to, or None unless all of the host's addresses are public."""
+    try:
+        found = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except (OSError, UnicodeError):
+        return None
+    for x in found:
+        ip = ipaddress.ip_address(x[4][0].split("%")[0])
+        ip = getattr(ip, "ipv4_mapped", None) or ip
+        # 64:ff9b::/96 and 2002::/16 wrap an IPv4 address that could be private
+        if not ip.is_global or ip.is_multicast or (ip.version == 6 and (ip.sixtofour or ip.teredo or ip in ipaddress.ip_network("64:ff9b::/96"))):
+            return None
+    v4 = [x for x in found if x[0] == socket.AF_INET]
+    return (v4 or found)[0][4][:2] if found else None
+
+
+class OutProxy(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+    timeout = 60
+
+    def log_message(self, *a):
+        pass
+
+    def out(self, host: str, port: int):
+        addr = public_addr(host, port) if port in (80, 443, 8080, 8443) else None
+        if not addr:
+            self.send_error(403)
+            self.close_connection = True
+            return None
+        try:
+            return socket.create_connection(addr, timeout=20)
+        except OSError:
+            self.send_error(502)
+            self.close_connection = True
+            return None
+
+    def pipe(self, up) -> None:
+        self.close_connection = True
+        socks = [self.connection, up]
+        try:
+            while True:
+                ready, _, _ = select.select(socks, [], [], 60)
+                if not ready:
+                    return
+                for s in ready:
+                    data = s.recv(65536)
+                    if not data:
+                        return
+                    (up if s is self.connection else self.connection).sendall(data)
+        except OSError:
+            pass
+        finally:
+            up.close()
+
+    def do_CONNECT(self):
+        u = urlparse("//" + self.path)
+        try:
+            host, port = u.hostname or "", u.port or 443
+        except ValueError:
+            return self.send_error(400)
+        up = self.out(host, port)
+        if up:
+            self.connection.sendall(b"HTTP/1.1 200 OK\r\n\r\n")
+            self.pipe(up)
+
+    def plain(self):
+        u = urlparse(self.path)
+        try:
+            host, port = u.hostname or "", u.port or 80
+        except ValueError:
+            return self.send_error(400)
+        if u.scheme != "http":
+            return self.send_error(400)
+        up = self.out(host, port)
+        if not up:
+            return
+        head = f"{self.command} {urllib.parse.urlunparse(('', '', u.path or '/', u.params, u.query, ''))} HTTP/1.1\r\n"
+        for k, v in self.headers.items():
+            if k.lower() not in ("proxy-connection", "connection", "proxy-authorization"):
+                head += f"{k}: {v}\r\n"
+        up.sendall((head + "Connection: close\r\n\r\n").encode("latin-1", "replace"))
+        self.pipe(up)
+
+    do_GET = do_HEAD = do_POST = plain
+
+
+_proxy_lock = threading.Lock()
+_proxy_url = ""
+
+
+def out_proxy() -> str:
+    global _proxy_url
+    with _proxy_lock:
+        if not _proxy_url:
+            srv = ThreadingHTTPServer(("127.0.0.1", 0), OutProxy)
+            srv.daemon_threads = True
+            threading.Thread(target=srv.serve_forever, daemon=True).start()
+            _proxy_url = f"http://127.0.0.1:{srv.server_address[1]}"
+    return _proxy_url
+
+
+WEB_MEDIA = re.compile(r"""(?:https?:)?//[^\s"'<>\\^`{}|]{4,600}?\.(?:m3u8|mpd|mp4|webm|m4v|mov)(?:\?[^\s"'<>\\^`{}|]{0,900})?(?=["'<>\s\\]|$)""", re.I)
+WEB_FRAME = re.compile(r"""<iframe[^>]+?src=["']([^"']{4,900})["']""", re.I)
+WEB_TITLE = re.compile(r"""<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']{1,200})|<title[^>]*>([^<]{1,200})""", re.I)
+
+
+def web_find(url: str, depth: int = 0) -> tuple[str, list[tuple[str, str]]]:
+    """Title and [(media link, page it was on)] of a page yt-dlp can't read by itself."""
+    op = urllib.request.build_opener(urllib.request.ProxyHandler({"http": out_proxy(), "https": out_proxy()}))
+    try:
+        with op.open(urllib.request.Request(url, headers={"User-Agent": UA, "Accept-Language": "en,de;q=0.8"}), timeout=20) as r:
+            url = r.geturl()
+            html = r.read(6 * 1024 * 1024).decode("utf-8", "replace")
+    except Exception:
+        return "", []
+    html = html.replace("\\/", "/").replace("\\u002F", "/").replace("\\u0026", "&").replace("&amp;", "&")
+    m = WEB_TITLE.search(html)
+    title = (m[1] or m[2] or "").strip() if m else ""
+    links = [urllib.parse.urljoin(url, x) for x in dict.fromkeys(WEB_MEDIA.findall(html))]
+    rel = re.findall(r"""(?:src|href|file|url)["']?\s*[:=]\s*["']([^"'\s<>:]{1,300}\.(?:m3u8|mp4|webm|m4v|mov)(?:\?[^"'\s<>]{0,400})?)["']""", html, re.I)
+    links += [urllib.parse.urljoin(url, x) for x in rel]
+    # a stream has every quality, so it goes first; previews and adverts last
+    links = sorted(dict.fromkeys(links), key=lambda x: (bool(re.search(r"preview|thumb|trailer|sprite|/ads?[/_.-]", x, re.I)), ".m3u8" not in x.lower()))
+    found = [(x, url) for x in links[:4]]
+    if depth == 0 and not found:
+        for src in list(dict.fromkeys(WEB_FRAME.findall(html)))[:3]:
+            src = urllib.parse.urljoin(url, src)
+            if src.startswith("http"):
+                found += web_find(src, 1)[1]
+    return title, found[:4]
+
+
+def web_retry(jid: str, d: Path, cmd: list[str], url: str) -> Path | None:
+    title, found = web_find(url)
+    for link, page in found:
+        with _dl_lock:
+            if jid not in _dl_jobs:
+                return None
+        for x in d.iterdir():
+            x.unlink(missing_ok=True)
+        p = subprocess.Popen([*cmd[:-2], "--referer", page, "--", link], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, env=child_env())
+        _dl_procs[jid] = p
+        path = None
+        try:
+            for line in p.stdout:
+                if line.startswith("FILE "):
+                    path = Path(line[5:].strip())
+                elif line.startswith("DL "):
+                    m = re.match(r"DL\s+([\d.]+)%", line)
+                    if m:
+                        dl_set(jid, progress=round(min(float(m[1]) / 100, 0.99), 3))
+            p.wait(timeout=3600)
+        finally:
+            _dl_procs.pop(jid, None)
+        if p.returncode == 0 and path and path.exists():
+            if title:
+                import html as _html
+                title = _html.unescape(title)
+                dl_set(jid, title=title[:120])
+                new = path.with_name(clean_name(title, path.suffix.lstrip(".")))
+                path.rename(new)
+                path = new
+            return path
+    return None
+
+
 def dl_save() -> None:
     DL.mkdir(parents=True, exist_ok=True)
     with _dl_lock:
@@ -708,9 +880,9 @@ def new_download(b: dict) -> dict:
     url = str(b.get("url", "")).strip()
     if not re.match(r"^https?://\S{4,500}$", url):
         raise ValueError("Paste a full link (starting with https://).")
-    plat = platform_of(url)
-    if not plat:
-        raise ValueError("That site isn't supported. Try YouTube, TikTok, Instagram, X, Pinterest, Twitch, Reddit or SoundCloud.")
+    plat = platform_of(url) or "web"
+    if plat == "web" and not public_addr(urlparse(url).hostname or ""):
+        raise ValueError("That site can't be reached.")
     fmt = b.get("format")
     if fmt not in ("mp4", "mp3", "gif"):
         raise ValueError("Pick MP4, MP3 or GIF.")
@@ -842,6 +1014,10 @@ def run_download(jid: str) -> None:
         cmd += ["--download-sections", f"*{s}-{e if e is not None else 'inf'}"]
         if fmt == "mp4":
             cmd += ["--force-keyframes-at-cuts"]
+    if job["platform"] == "web":
+        cmd += ["--proxy", out_proxy()]
+        if (LIB / "curl_cffi").is_dir():
+            cmd += ["--extractor-args", "generic:impersonate"]
     cmd += ["--", url]
 
     path, err_lines = None, []
@@ -880,7 +1056,15 @@ def run_download(jid: str) -> None:
     if p.returncode != 0 or not path or not path.exists():
         msg = next((l for l in reversed(err_lines) if l.startswith("ERROR")), err_lines[-1] if err_lines else "Download failed.")
         msg = re.sub(r"^ERROR:\s*(\[[^\]]+\]\s*[\w-]+:\s*)?", "", msg)
-        if job["platform"] == "pinterest":
+        again = web_retry(jid, d, cmd, url) if job["platform"] == "web" else None
+        with _dl_lock:
+            gone = jid not in _dl_jobs
+        if gone:
+            shutil.rmtree(d, ignore_errors=True)
+            return
+        if again:
+            path = again
+        elif job["platform"] == "pinterest":
             # GIF and picture pins have no video for yt-dlp; grab the original file.
             dl_set(jid, state="downloading", progress=0.5)
             murl, ptitle = pinterest_media(url)

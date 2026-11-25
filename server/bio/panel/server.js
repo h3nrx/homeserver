@@ -2490,6 +2490,8 @@ async function updateInfo(force) {
   };
 }
 async function updateRoutes(req, res, p, m, url) {
+  if (p === "/api/update/system" && m === "GET") return send(res, 200, await agent("sys_updates", { refresh: url.searchParams.get("refresh") === "1" }, { timeout: 110e3 }));
+  if (p === "/api/update/system" && m === "POST") return send(res, 200, await agent("sys_install", {}, { timeout: 60e3 }));
   if (p === "/api/update" && m === "GET") return send(res, 200, await updateInfo(url.searchParams.get("refresh") === "1"));
   if (p === "/api/update/key" && m === "PUT") {
     const { key } = await readJson(req);
@@ -3324,7 +3326,7 @@ async function route(req, res) {
   if (p === "/api/camera/live" && m === "GET") return cameraLive(req, res, url.searchParams);
   if (p === "/api/camera/timelapse" || p.startsWith("/api/camera/timelapse/")) return timelapseRoutes(req, res, p, m, url);
   if (p.startsWith("/api/camera/")) return cameraRoutes(req, res, p, m, url);
-  if (p === "/api/update" || p === "/api/update/install" || p === "/api/update/key") return updateRoutes(req, res, p, m, url);
+  if (p === "/api/update" || p === "/api/update/install" || p === "/api/update/key" || p === "/api/update/system") return updateRoutes(req, res, p, m, url);
   if (p === "/api/clips" || p.startsWith("/api/clips/")) return clipRoutes(req, res, p, m, url);
   if (p === "/api/music" || p.startsWith("/api/music/")) return musicRoutes(req, res, p, m);
   if (p === "/api/downloads" || p.startsWith("/api/downloads/")) return downloadRoutes(req, res, p, m);
