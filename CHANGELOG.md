@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.7.2
+
+Mehr Schutz beim Anmelden.
+
+- Nach 3 falschen Passwörtern wird die IP-Adresse 24 Stunden gesperrt. Das gilt auch nach einem Neustart.
+- Beim Anmelden steht, wie viele Versuche noch übrig sind.
+- Gesperrte Adressen stehen in der Systemübersicht und lassen sich dort entsperren.
+
 ## 1.7.1
 
 Zeitraffer im Kamera-Tab.

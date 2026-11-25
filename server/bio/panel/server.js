@@ -34,7 +34,8 @@ const RESET_FILE = process.env.RESET_FILE || "/control/reset-seed";
 
 const SESSION_MS = 12 * 60 * 60 * 1000;
 const WINDOW_MS = 15 * 60 * 1000;
-const MAX_FAILS = 5;            // wrong passwords per visitor per window
+const MAX_FAILS = 3;            // wrong passwords until that address is blocked
+const BLOCK_MS = 24 * 60 * 60 * 1000;
 const MAX_FAILS_GLOBAL = 40;    // all visitors together, against spread-out attacks
 
 const NAME = /^[A-Za-z0-9_]{3,16}$/;
@@ -64,6 +65,34 @@ let fails = [];
 const failsByIp = new Map();
 // nginx sets X-Real-IP from the Funnel's X-Forwarded-For; the panel port is not published.
 const clientIp = (req) => String(req.headers["x-real-ip"] || req.socket.remoteAddress || "?").slice(0, 64);
+
+// Addresses that typed the wrong password too often. Read from the file every
+// time, so deleting it on the server lets everyone in again at once.
+const BLOCK_FILE = path.join(FILES_DIR, ".panel", "blocked.json");
+// one IPv6 connection has a whole /64, so that is blocked as one
+function blockKey(ip) {
+  if (!net.isIPv6(ip) || /^::ffff:/i.test(ip)) return ip.replace(/^::ffff:/i, "");
+  const [a, b = ""] = ip.split("::"), left = a.split(":").filter(Boolean), right = b.split(":").filter(Boolean);
+  const all = ip.includes("::") ? [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill("0"), ...right] : left;
+  return `${all.slice(0, 4).map((x) => parseInt(x, 16).toString(16)).join(":")}::/64`;
+}
+async function blockedList() {
+  let o = {};
+  try { o = JSON.parse(await fsp.readFile(BLOCK_FILE, "utf8")) || {}; } catch {}
+  return new Map(Object.entries(o).filter(([, until]) => until > Date.now()));
+}
+let blockQueue = Promise.resolve();
+function changeBlocked(fn) {
+  const job = blockQueue.then(async () => {
+    const list = await blockedList();
+    fn(list);
+    await fsp.mkdir(path.dirname(BLOCK_FILE), { recursive: true });
+    await fsp.writeFile(`${BLOCK_FILE}.tmp`, JSON.stringify(Object.fromEntries([...list].slice(-5000))));
+    await fsp.rename(`${BLOCK_FILE}.tmp`, BLOCK_FILE);
+  });
+  blockQueue = job.catch(() => {});
+  return job;
+}
 
 class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
@@ -3228,27 +3257,38 @@ async function route(req, res) {
     return send(res, 200, { state: s.state || "idle", step: s.step || null, to: s.to || null, version: await currentVersion() });
   }
   if (p === "/api/login" && m === "POST") {
-    const now = Date.now(), ip = clientIp(req);
+    const now = Date.now(), ip = clientIp(req), key = blockKey(ip);
+    const until = (await blockedList()).get(key);
+    if (until) fail(403, `Blocked after ${MAX_FAILS} wrong passwords. Try again in ${Math.ceil((until - now) / 3600e3)} h.`);
     fails = fails.filter((t) => now - t < WINDOW_MS);
-    if (failsByIp.size > 2000) for (const [k, v] of failsByIp) if (!v.some((t) => now - t < WINDOW_MS)) failsByIp.delete(k);
-    const mine = (failsByIp.get(ip) || []).filter((t) => now - t < WINDOW_MS);
-    if (mine.length >= MAX_FAILS || fails.length >= MAX_FAILS_GLOBAL) {
-      console.log(`login blocked for ${ip}`);
-      fail(429, "Too many attempts. Try again in 15 minutes.");
-    }
+    if (fails.length >= MAX_FAILS_GLOBAL) fail(429, "Too many attempts. Try again in 15 minutes.");
     const { password } = await readJson(req);
+    if (failsByIp.size > 2000) for (const [k, v] of failsByIp) if (!v.some((t) => now - t < BLOCK_MS)) failsByIp.delete(k);
+    // counted before the check, so many tries at the same moment don't slip through
+    const mine = (failsByIp.get(key) || []).filter((t) => now - t < BLOCK_MS);
+    if (mine.length >= MAX_FAILS) fail(429, "Too many attempts. Try again in 15 minutes.");
+    mine.push(now);
+    failsByIp.set(key, mine);
+    const uncount = () => { const l = failsByIp.get(key); if (l) l.splice(l.indexOf(now), 1); };
     let ok = false;
     if (typeof password === "string" && password.length <= 256) {
       try { ok = await checkPassword(password); }
-      catch { fail(503, "No admin password has been set yet."); }
+      catch { uncount(); fail(503, "No admin password has been set yet."); }
     }
     if (!ok) {
-      fails.push(now); mine.push(now); failsByIp.set(ip, mine);
-      console.log(`login failed from ${ip} (${mine.length}/${MAX_FAILS})`);
+      fails.push(now);
+      const n = mine.length;
+      console.log(`login failed from ${ip} (${n}/${MAX_FAILS})`);
+      if (n >= MAX_FAILS) {
+        await changeBlocked((l) => l.set(key, Date.now() + BLOCK_MS));
+        failsByIp.delete(key);
+        console.log(`login: ${key} blocked for 24 h`);
+      }
       await sleep(700 + Math.random() * 500);   // slows down guessing
-      fail(401, "Wrong password.");
+      if (n >= MAX_FAILS) fail(403, `Blocked after ${MAX_FAILS} wrong passwords. Try again in 24 h.`);
+      fail(401, MAX_FAILS - n === 1 ? "Wrong password. 1 try left." : `Wrong password. ${MAX_FAILS - n} tries left.`);
     }
-    failsByIp.delete(ip);
+    failsByIp.delete(key);
     console.log(`login ok from ${ip}`);
     const token = crypto.randomBytes(32).toString("hex");
     sessions.set(token, now + SESSION_MS);
@@ -3259,6 +3299,13 @@ async function route(req, res) {
 
   if (!isAuthed(req)) fail(401, "Please sign in.");
 
+  if (p === "/api/blocked" && m === "GET") return send(res, 200, { items: [...(await blockedList())].map(([ip, until]) => ({ ip, until })).reverse() });
+  if (p === "/api/blocked/unblock" && m === "POST") {
+    const { ip } = await readJson(req);
+    await changeBlocked((l) => l.delete(String(ip)));
+    failsByIp.delete(String(ip));
+    return send(res, 200, { ok: true });
+  }
   if (p === "/api/logout" && m === "POST") {
     sessions.delete(cookieToken(req));
     return send(res, 200, { ok: true }, { "Set-Cookie": "sid=; Path=/api; HttpOnly; Secure; SameSite=Strict; Max-Age=0" });
