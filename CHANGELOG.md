@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.12
+
+Notenrechner mit Schulnoten.
+
+- Der Gesamtdurchschnitt und jedes Fach zeigen jetzt zusätzlich die Note von 1 bis 6, mit Kommastellen.
+- Umrechnung: Note = (17 − Punkte) ÷ 3. Also 15 Punkte = 0,67, 14 Punkte = 1,0, 13 Punkte = 1,33 und so weiter.
+
 ## 1.7.11
 
 Notenrechner.
