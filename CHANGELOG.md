@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.8
+
+Laptop-Bildschirm in Farbe.
+
+- Eigene, weiche Farben statt der grellen Standardfarben der Konsole.
+- Feine farbige Balken für CPU, RAM und Speicher. Sie werden gelb und rot, wenn es eng wird.
+- Grüne, gelbe und rote Punkte für Minecraft, Website und Ubuntu.
+- Neu: aktuelle Download- und Upload-Geschwindigkeit unten.
+
 ## 1.7.7
 
 Neues Design und Status auf dem Laptop-Bildschirm.
