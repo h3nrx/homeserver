@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.7.10
+
+Neue Designs.
+
+- Sechs neue Designs: Höhenlinien, Graphit, Glut, Terminal, Tiefsee und Dämmerung. Jedes hat eigene Farben, eine eigene Schrift und einen ruhigen Hintergrund, keine Fotos mehr.
+- Kacheln sind jetzt klar und ruhig statt milchig verschwommen.
+- Die Design-Seite zeigt eine Live-Vorschau: mit der Maus auf ein Design zeigen, um es anzusehen, und klicken, um es zu übernehmen.
+- Akzentfarbe, Schrift und Ecken liegen eingeklappt unter „Feinschliff“. Die Sprache bleibt immer sichtbar.
+- Alte Designs werden automatisch auf das passende neue umgestellt.
+
 ## 1.7.9
 
 Laptop-Bildschirm in deiner Sprache.
