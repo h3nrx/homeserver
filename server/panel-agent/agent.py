@@ -672,10 +672,22 @@ def sys_updates(p) -> dict:
                            capture_output=True, text=True, timeout=100, env=env)
         if r.returncode != 0:
             out["error"] = "Couldn't load the package list."
-    r = subprocess.run(["apt-get", "-s", "-o", "Debug::NoLocking=1", "--with-new-pkgs", "upgrade"], capture_output=True, text=True, timeout=60, env=env)
+    # Run outside this service's own mount namespace (PrivateTmp): in there apt
+    # thinks it is in a chroot and ignores phased updates, which the real
+    # install then skips, so they would show up forever.
+    r = subprocess.run(["systemd-run", "--wait", "--pipe", "--quiet", "--collect", "--setenv=LC_ALL=C", "/usr/bin/apt-get", "-s", "-o", "Debug::NoLocking=1", "--with-new-pkgs", "upgrade"],
+                       capture_output=True, text=True, timeout=90, env=env)
     if r.returncode != 0:
         out["error"] = "apt reported an error."
-    found = [m for m in map(SYS_INST.match, r.stdout.splitlines()) if m]
+    lines, held, skip = r.stdout.splitlines(), set(), False
+    for line in lines:                  # names under "...deferred due to phasing:"
+        if line.endswith(":"):
+            skip = "phasing" in line
+        elif skip and line.startswith(" "):
+            held.update(line.split())
+        else:
+            skip = False
+    found = [m for m in map(SYS_INST.match, lines) if m and m[1] not in held]
     out["packages"] = [{"name": m[1], "version": m[3], "security": "-security" in m[4]} for m in found][:400]
     out["reboot"] = Path("/var/run/reboot-required").exists()
     try:

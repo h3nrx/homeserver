@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.6
+
+Ubuntu-Updates: gestaffelte Updates.
+
+- Updates, die Ubuntu nur schrittweise verteilt und für diesen Laptop noch nicht freigegeben hat, werden nicht mehr als installierbar angezeigt. Sie kommen von selbst, sobald Ubuntu sie freigibt.
+
 ## 1.7.5
 
 Ladebalken und schnellere Updates.
