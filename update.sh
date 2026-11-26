@@ -261,6 +261,9 @@ echo "$NEWVER" > "$ETC/VERSION"
 status ok
 echo "    Fertig: ${FROM:-?} -> $NEWVER"
 rm -rf "$WORK"
+if need '^(panel-agent/screen\.py|systemd/homeserver-screen\.service)$' && systemctl is-active --quiet homeserver-screen; then
+  systemctl restart homeserver-screen || true
+fi
 # The agent goes last: it may be the one that started us.
 if need '^(panel-agent/|systemd/panel-agent\.service$)'; then systemctl restart panel-agent; fi
 exit 0

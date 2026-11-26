@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.7
+
+Neues Design und Status auf dem Laptop-Bildschirm.
+
+- Admin: neues Design „Höhenlinien“ im Look der Startseite: schwarz, schlicht, mit langsam wandernden Linien. Einschalten unter Design.
+- Laptop-Bildschirm: Unter System → Laptop-Bildschirm lässt sich ein Status-Bildschirm einschalten. Der Laptop zeigt dann statt der Anmeldung Uhrzeit, CPU, RAM, Speicher, Minecraft, Website, Ubuntu-Updates und die Verbindung. Die Anmeldung gibt es weiter mit Strg+Alt+F2.
+
 ## 1.7.6
 
 Ubuntu-Updates: gestaffelte Updates.

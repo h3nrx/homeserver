@@ -1,0 +1,30 @@
+[Unit]
+Description=Status screen on the laptop display (tty1)
+After=systemd-user-sessions.service getty@tty1.service
+Conflicts=getty@tty1.service
+
+[Service]
+Type=simple
+ExecStartPre=-/usr/bin/setfont -C /dev/tty1 Uni2-TerminusBold32x16
+ExecStart=/usr/bin/python3 -u __HOME__/panel-agent/screen.py
+ExecStopPost=-/usr/bin/setfont -C /dev/tty1 -d
+Restart=always
+RestartSec=5
+StandardInput=tty
+StandardOutput=tty
+StandardError=journal
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+Environment=TERM=linux TZ=Europe/Berlin
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

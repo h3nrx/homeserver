@@ -716,6 +716,28 @@ def sys_install(_p=None) -> dict:
     return sys_status()
 
 
+# ---- status screen on the laptop's own display (tty1) ----
+SCREEN_UNIT = "homeserver-screen.service"
+
+
+def screen_get(_p=None) -> dict:
+    ok = Path("/dev/tty1").exists() and Path(f"/etc/systemd/system/{SCREEN_UNIT}").exists()
+    return {"supported": ok, "on": ok and systemctl("is-enabled", SCREEN_UNIT).stdout.strip() == "enabled",
+            "running": ok and unit_state(SCREEN_UNIT) == "active"}
+
+
+def screen_set(p) -> dict:
+    if not screen_get()["supported"]:
+        raise ValueError("This server has no screen of its own.")
+    if p.get("on"):
+        check(systemctl("enable", "--now", SCREEN_UNIT), "Switching the screen on")
+    else:
+        check(systemctl("disable", "--now", SCREEN_UNIT), "Switching the screen off")
+        systemctl("start", "getty@tty1.service")     # the normal login comes back
+    log(f"screen {'on' if p.get('on') else 'off'}")
+    return screen_get()
+
+
 # -------------------------------- commands -------------------------------
 HANDLERS = {
     "mc_status": mc_status,
@@ -726,6 +748,8 @@ HANDLERS = {
     "update_install": update_install,
     "update_release": update_release,
     "update_key": update_key,
+    "screen_get": screen_get,
+    "screen_set": screen_set,
     "sys_updates": sys_updates,
     "sys_install": sys_install,
     "bot_list": bot_list,
