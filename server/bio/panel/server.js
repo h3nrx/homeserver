@@ -954,13 +954,15 @@ async function writePrefs(b) {
       prefs.design = {
         theme: typeof d.theme === "string" && /^[a-z0-9-]{1,24}$/.test(d.theme) ? d.theme : "aurora",
         accent: typeof d.accent === "string" && /^#[0-9a-f]{6}$/i.test(d.accent) ? d.accent.toLowerCase() : null,
-        bg: pick(d.bg, ["sky", "aurora", "mesh", "grid", "stars", "solid",
+        bg: pick(d.bg, ["sky", "aurora", "contour", "mesh", "grid", "stars", "solid",
           "p-lake", "p-northern", "p-nebula", "p-tokyo", "p-forest", "p-ocean", "p-dunes", "p-cabin", "p-waves", "p-voxel"], null),
         radius: pick(d.radius, ["round", "soft", "sharp"], "round"),
         font: pick(d.font, ["geist", "inter", "grotesk", "outfit", "sora", "manrope", "syne", "serif", "rounded", "mono", "pixel"], null),
       };
     } else fail(400, "Bad design.");
   }
+  // the last language picked in the admin; the laptop's own screen uses it
+  if (b && ["de", "en"].includes(b.lang)) prefs.lang = b.lang;
   await fsp.mkdir(path.dirname(PREFS_FILE), { recursive: true, mode: 0o755 });
   await fsp.writeFile(`${PREFS_FILE}.tmp`, JSON.stringify(prefs));
   await fsp.rename(`${PREFS_FILE}.tmp`, PREFS_FILE);

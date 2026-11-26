@@ -6258,7 +6258,8 @@ function camPill() {
 $$("#ds-lang button, #login-lang button").forEach((b) => {
   const on = b.dataset.lang === UI_LANG;
   b.setAttribute(b.closest(".seg") ? "aria-selected" : "aria-current", String(on));
-  b.addEventListener("click", () => { if (!on) setLang(b.dataset.lang); });
+  // saved on the server too (when signed in), for the laptop's own screen
+  b.addEventListener("click", () => { if (!on) api("/api/prefs", { method: "PUT", body: { lang: b.dataset.lang } }).catch(() => {}).finally(() => setLang(b.dataset.lang)); });
 });
 
 /* ============================== power ============================== */
@@ -6559,6 +6560,7 @@ function applyTiles(hub) {
 async function loadPrefs() {
   let prefs;
   try { prefs = await api("/api/prefs"); } catch { return; }
+  if (!prefs.lang) api("/api/prefs", { method: "PUT", body: { lang: UI_LANG } }).catch(() => {});
   tilePrefs.tiles = prefs.tiles || {};
   if (prefs.design) { design = applyDesign(prefs.design); cacheDesign(); if (currentView === "design") renderDesign(); }
   Object.keys(tilePrefs.defaults).forEach(applyTiles);

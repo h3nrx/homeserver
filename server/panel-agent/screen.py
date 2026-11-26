@@ -18,6 +18,7 @@ from pathlib import Path
 BRAND = "__BRAND__"
 STATS = Path("/var/lib/panel/stats.json")
 SYS = Path("/var/lib/panel/sysupdate.json")
+PREFS = Path("__HOME__/files/.panel/prefs.json")   # the language picked in the admin
 
 # The Linux console has 16 colours that can be redefined. Soft tones like in
 # the admin, the same tone for normal and bold, so nothing gets louder.
@@ -38,8 +39,33 @@ FONT = {
     "8": ["###", "# #", "###", "# #", "###"], "9": ["###", "# #", "###", "  #", "###"],
     ":": [" ", "#", " ", "#", " "],
 }
-DAYS = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
-MONTHS = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"]
+TEXT = {
+    "de": {
+        "days": ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"],
+        "months": ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"],
+        "date": "{day}, {d}. {month}", "dec": ",", "up": "an seit", "dh": "{d} T {h} Std", "hm": "{h} Std {m} Min",
+        "loading": "Werte werden geladen…", "online": "online", "nobody": "niemand spielt", "one": "1 spielt", "many": "{n} spielen",
+        "off": "aus", "runs": "läuft", "down": "nicht erreichbar", "updating": "wird aktualisiert…", "reboot": "Neustart nötig",
+        "current": "aktuell", "nonet": "kein Netz",
+    },
+    "en": {
+        "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+        "months": ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+        "date": "{day}, {d} {month}", "dec": ".", "up": "up for", "dh": "{d} d {h} h", "hm": "{h} h {m} min",
+        "loading": "Loading…", "online": "online", "nobody": "nobody playing", "one": "1 playing", "many": "{n} playing",
+        "off": "off", "runs": "running", "down": "not reachable", "updating": "updating…", "reboot": "restart needed",
+        "current": "up to date", "nonet": "no network",
+    },
+}
+T = TEXT["de"]
+
+
+def language() -> dict:
+    try:
+        lang = json.loads(PREFS.read_text()).get("lang")
+    except (OSError, ValueError, AttributeError):
+        lang = None
+    return TEXT.get(lang) or TEXT["de" if os.environ.get("LANG", "").startswith("de") else "en"]
 
 
 def big(text: str) -> list[str]:
@@ -82,12 +108,12 @@ def dot(colour: str) -> str:
 
 
 def gb(b: float) -> str:
-    return f"{b / 1024 ** 3:.1f}".replace(".", ",")
+    return f"{b / 1024 ** 3:.1f}".replace(".", T["dec"])
 
 
 def rate(b: float) -> str:
     if b >= 1024 ** 2:
-        return f"{b / 1024 ** 2:.1f} MB/s".replace(".", ",")
+        return f"{b / 1024 ** 2:.1f} MB/s".replace(".", T["dec"])
     return f"{round(b / 1024)} kB/s"
 
 
@@ -115,7 +141,7 @@ def address() -> tuple[str, str]:
             ip = s.getsockname()[0]
     except OSError:
         pass
-    link = f"{RED}kein Netz{R}"
+    link = f"{RED}{T['nonet']}{R}"
     for dev in sorted(os.listdir("/sys/class/net")):
         try:
             up = Path(f"/sys/class/net/{dev}/operstate").read_text().strip() == "up"
@@ -139,15 +165,17 @@ def address() -> tuple[str, str]:
 
 def uptime(sec: float) -> str:
     d, h, m = int(sec // 86400), int(sec % 86400 // 3600), int(sec % 3600 // 60)
-    return f"{d} T {h} Std" if d else f"{h} Std {m} Min"
+    return T["dh"].format(d=d, h=h) if d else T["hm"].format(h=h, m=m)
 
 
 def frame(cols: int, lines: int) -> list[str]:
+    global T
+    T = language()
     st, pub, su = read_json(STATS), public(), read_json(SYS)
     now = time.localtime()
     width = min(76, cols - 4)
     out = []
-    date = f"{DAYS[now.tm_wday]}, {now.tm_mday}. {MONTHS[now.tm_mon - 1]}"
+    date = T["date"].format(day=T["days"][now.tm_wday], d=now.tm_mday, month=T["months"][now.tm_mon - 1])
     out.append(f"{TEAL}●{R} {BOLD}{W}{BRAND}{R}" + " " * max(1, width - len(BRAND) - 2 - len(date)) + f"{G}{date}{R}")
     out.append(f"{D}{'─' * width}{R}")
     out.append("")
@@ -168,24 +196,24 @@ def frame(cols: int, lines: int) -> list[str]:
             out.append(f"{G}  disk  {R}{bar(disk['used'] / max(1, disk['total']), TEAL, bw)}   {W}{round(disk['used'] / 1024 ** 3)}{G} / {round(disk['total'] / 1024 ** 3)} GB{R}")
         temp = st.get("temp_c")
         tc = RED if (temp or 0) >= 85 else AMBER if (temp or 0) >= 70 else W
-        out.append(f"{G}  temp  {tc}{round(temp) if temp is not None else '–'} °C{R}" + " " * 9 + f"{G}an seit {W}{uptime(st.get('uptime') or 0)}{R}")
+        out.append(f"{G}  temp  {tc}{round(temp) if temp is not None else '–'} °C{R}" + " " * 9 + f"{G}{T['up']} {W}{uptime(st.get('uptime') or 0)}{R}")
     else:
-        out.append(f"{G}  Werte werden geladen…{R}")
+        out.append(f"{G}  {T['loading']}{R}")
     out.append("")
     mc = (pub or {}).get("mc") or {}
     n = int(mc.get("online") or 0)
     if mc.get("active"):
-        mtxt = f"{dot(GREEN)} {W}online{G} · " + ("niemand spielt" if not n else "1 spielt" if n == 1 else f"{n} spielen")
+        mtxt = f"{dot(GREEN)} {W}{T['online']}{G} · " + (T["nobody"] if not n else T["one"] if n == 1 else T["many"].format(n=n))
     else:
-        mtxt = f"{dot(D)} {G}aus"
+        mtxt = f"{dot(D)} {G}{T['off']}"
     out.append(f"{G}  minecraft   {mtxt}{R}")
-    out.append(f"{G}  website     " + (f"{dot(GREEN)} {W}läuft{R}" if pub else f"{dot(RED)} {RED}nicht erreichbar{R}"))
+    out.append(f"{G}  website     " + (f"{dot(GREEN)} {W}{T['runs']}{R}" if pub else f"{dot(RED)} {RED}{T['down']}{R}"))
     if su.get("state") in ("starting", "running"):
-        utxt = f"{dot(BLUE)} {W}wird aktualisiert…"
+        utxt = f"{dot(BLUE)} {W}{T['updating']}"
     elif Path("/var/run/reboot-required").exists():
-        utxt = f"{dot(AMBER)} {W}Neustart nötig"
+        utxt = f"{dot(AMBER)} {W}{T['reboot']}"
     else:
-        utxt = f"{dot(GREEN)} {W}aktuell"
+        utxt = f"{dot(GREEN)} {W}{T['current']}"
     out.append(f"{G}  ubuntu      {utxt}{R}")
     out.append("")
     out.append(f"{D}{'─' * width}{R}")

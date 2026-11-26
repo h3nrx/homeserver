@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.9
+
+Laptop-Bildschirm in deiner Sprache.
+
+- Der Laptop-Bildschirm zeigt alles auf Deutsch oder Englisch, je nachdem, welche Sprache zuletzt im Admin gewählt wurde.
+- Design: Der Höhenlinien-Hintergrund bleibt jetzt auch gespeichert, wenn er zu einem anderen Design gewählt wird.
+
 ## 1.7.8
 
 Laptop-Bildschirm in Farbe.
