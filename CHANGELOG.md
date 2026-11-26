@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.5
+
+Ladebalken und schnellere Updates.
+
+- File Downloader: Der Ladebalken zeigt jetzt den echten Fortschritt, statt von 0 auf 100 % zu springen. Video und Ton zählen zusammen als ein Balken.
+- Updates bauen den Media-Dienst nur noch neu, wenn es wirklich nötig ist. Das spart mehrere Minuten und viel CPU.
+
 ## 1.7.4
 
 Sicherheitsupdate.

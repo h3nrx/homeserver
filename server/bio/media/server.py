@@ -1001,8 +1001,9 @@ def run_download(jid: str) -> None:
            "--socket-timeout", "20", "--max-filesize", "2G", "--windows-filenames", "--trim-filenames", "90",
            "--no-mtime", "-o", f"{d}/%(title).70B.%(ext)s", "-o", f"thumbnail:{d}/thumb",
            "--write-thumbnail", "--convert-thumbnails", "jpg",
-           "--progress-template", "download:DL %(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s",
-           "--print", "video:META %(title)s|%(uploader)s|%(duration)s",
+           # --print makes yt-dlp quiet; --progress keeps the progress lines coming
+           "--progress", "--progress-template", "download:DL %(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s",
+           "--print", "video:META %(title)s|%(uploader)s|%(duration)s|%(format_id)s",
            "--print", "after_move:FILE %(filepath)s", "--no-simulate"]
     if fmt == "mp4":
         q = o.get("quality", "best")
@@ -1029,21 +1030,30 @@ def run_download(jid: str) -> None:
     _dl_procs[jid] = p
     t_err = threading.Thread(target=lambda: err_lines.extend(p.stderr.read().splitlines()), daemon=True)
     t_err.start()
+    # Video and sound come one after the other, each from 0 to 100 %.
+    # One bar for both: the video counts 90 %, the sound the rest.
+    parts, part, last, shown = 1, 0, 0.0, 0.0
     try:
         for line in p.stdout:
             line = line.rstrip("\n")
             if line.startswith("DL "):
                 pct, speed, eta = (line[3:].split("|") + ["", "", ""])[:3]
                 try:
-                    prog = float(pct.strip().rstrip("%")) / 100
+                    prog = min(max(float(pct.strip().rstrip("%")) / 100, 0.0), 1.0)
                 except ValueError:
                     prog = None
                 kw = {"speed": speed.strip() if speed.strip() not in ("NA", "Unknown") else "", "eta": eta.strip() if eta.strip() not in ("NA", "Unknown") else ""}
                 if prog is not None:
-                    kw["progress"] = round(min(prog, 0.99), 3)
+                    if prog + 0.3 < last and part + 1 < parts:
+                        part += 1
+                    last = prog
+                    w = [0.9, 0.1] if parts == 2 else [1 / parts] * parts
+                    shown = max(shown, sum(w[:part]) + w[part] * prog)
+                    kw["progress"] = round(min(shown, 0.99), 3)
                 dl_set(jid, **kw)
             elif line.startswith("META "):
-                t, up, dur = (line[5:].split("|") + ["", "", ""])[:3]
+                t, up, dur, fid = (line[5:].split("|") + ["", "", "", ""])[:4]
+                parts = min(max(fid.count("+") + 1, 1), 4)
                 dl_set(jid, title=t[:120], uploader=up[:80] if up != "NA" else "",
                        duration=float(dur) if re.match(r"^\d+(\.\d+)?$", dur) else None)
             elif line.startswith("FILE "):

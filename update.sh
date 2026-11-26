@@ -192,8 +192,11 @@ restore() {
 apply() { # restart only what changed
   systemctl daemon-reload
   if need '^bio/nginx\.conf$'; then docker exec bio nginx -t || return 1; fi
-  if need '^bio/(compose\.yaml|media/Dockerfile)$'; then
+  # the media image only gets rebuilt when its Dockerfile changed (takes minutes)
+  if need '^bio/media/Dockerfile$'; then
     (cd "$HOMEDIR/bio" && docker compose up -d --build) || return 1
+  elif need '^bio/compose\.yaml$'; then
+    (cd "$HOMEDIR/bio" && docker compose up -d) || return 1
   fi
   if need '^bio/panel/'; then docker restart panel >/dev/null || return 1; fi
   if need '^bio/media/'; then docker restart media >/dev/null || return 1; fi
