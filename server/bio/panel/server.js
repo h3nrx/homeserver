@@ -2565,7 +2565,7 @@ async function updateRoutes(req, res, p, m, url) {
 
 /* ============================ Overview / public ============================ */
 async function overview() {
-  const [stats, mc, bots, files, clips, music, downloads, pastes, training, wallet] = await Promise.allSettled([readStats(), mcLight(), agent("bot_list"), filesSummary(), clipsSummary(), musicSummary(), downloadsSummary(), pastesSummary(), trainingSummary(), walletSummary()]);
+  const [stats, mc, bots, files, clips, music, downloads, pastes, training, wallet, grades] = await Promise.allSettled([readStats(), mcLight(), agent("bot_list"), filesSummary(), clipsSummary(), musicSummary(), downloadsSummary(), pastesSummary(), trainingSummary(), walletSummary(), gradesSummary()]);
   const val = (r) => (r.status === "fulfilled" ? r.value : null);
   const s = val(stats);
   const b = val(bots);
@@ -2593,6 +2593,7 @@ async function overview() {
     pastes: val(pastes),
     training: val(training),
     wallet: val(wallet),
+    grades: val(grades),
   };
 }
 
@@ -2818,6 +2819,71 @@ async function trainingSummary() {
     return { streak: s.streak, level: s.level, done_today: s.done_today,
       sets_today: s.plan.reduce((a, e) => a + e.done, 0), sets_total: s.plan.reduce((a, e) => a + e.sets, 0),
       week: s.calendar.days.slice(-7) };
+  });
+}
+
+/* ============================ Grade calculator ============================ */
+// Thuringian upper school: points 1-15 per grade. In a subject the normal grades
+// count 2/3 and the course exam(s) 1/3; the overall average is the plain mean of
+// all subjects that have grades.
+const GRADES_FILE = path.join(FILES_DIR, ".panel", "grades.json");
+const GR_ID = /^[a-z0-9]{1,16}$/;
+let gradesLock = Promise.resolve();
+function withGrades(fn) {
+  const run = gradesLock.then(async () => {
+    let g;
+    try { g = JSON.parse(await fsp.readFile(GRADES_FILE, "utf8")); } catch { g = null; }
+    if (!g || !Array.isArray(g.subjects)) g = { subjects: [] };
+    return fn(g, async () => {
+      await fsp.mkdir(path.dirname(GRADES_FILE), { recursive: true, mode: 0o755 });
+      await fsp.writeFile(`${GRADES_FILE}.tmp`, JSON.stringify(g));
+      await fsp.rename(`${GRADES_FILE}.tmp`, GRADES_FILE);
+    });
+  });
+  gradesLock = run.catch(() => {});
+  return run;
+}
+const clip = (v, n) => String(v ?? "").replace(/[\u0000-\u001f]/g, " ").trim().slice(0, n);
+function cleanSubjects(list) {
+  if (!Array.isArray(list) || list.length > 60) fail(400, "Too many subjects.");
+  const seen = new Set();
+  return list.map((s) => {
+    const name = clip(s && s.name, 40);
+    if (!s || !GR_ID.test(s.id) || seen.has(s.id) || !name) fail(400, "Every subject needs a name.");
+    seen.add(s.id);
+    if (!Array.isArray(s.grades) || s.grades.length > 300) fail(400, "Too many grades in one subject.");
+    const gseen = new Set();
+    const grades = s.grades.map((x) => {
+      const pts = Number(x && x.pts);
+      if (!x || !GR_ID.test(x.id) || gseen.has(x.id)) fail(400, "Bad grade.");
+      if (!Number.isInteger(pts) || pts < 1 || pts > 15) fail(400, "Points have to be between 1 and 15.");
+      if (x.kind !== "n" && x.kind !== "k") fail(400, "Bad grade type.");
+      gseen.add(x.id);
+      return { id: x.id, title: clip(x.title, 60), pts, kind: x.kind, ts: Number.isFinite(+x.ts) ? Math.round(+x.ts) : Date.now() };
+    });
+    return { id: s.id, name, grades };
+  });
+}
+const mean = (a) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : null);
+function subjectAverage(s) {
+  const n = mean(s.grades.filter((g) => g.kind === "n").map((g) => g.pts));
+  const k = mean(s.grades.filter((g) => g.kind === "k").map((g) => g.pts));
+  if (n != null && k != null) return (2 * n + k) / 3;
+  return n ?? k;
+}
+async function gradesRoutes(req, res, p, m) {
+  if (p === "/api/grades" && m === "GET") return send(res, 200, await withGrades((g) => g));
+  if (p === "/api/grades" && m === "PUT") {
+    const b = await readJson(req, 512 * 1024);
+    const subjects = cleanSubjects(b.subjects);
+    return send(res, 200, await withGrades(async (g, save) => { g.subjects = subjects; await save(); return g; }));
+  }
+  fail(404, "Not found.");
+}
+async function gradesSummary() {
+  return withGrades((g) => {
+    const avgs = g.subjects.map(subjectAverage).filter((x) => x != null);
+    return { subjects: g.subjects.length, graded: avgs.length, grades: g.subjects.reduce((a, s) => a + s.grades.length, 0), avg: mean(avgs) };
   });
 }
 
@@ -3386,6 +3452,7 @@ async function route(req, res) {
   if (p === "/api/convert" || p.startsWith("/api/convert/")) return convertRoutes(req, res, p, m, url);
   if (p === "/api/pastes" || p.startsWith("/api/pastes/")) return pasteRoutes(req, res, p, m);
   if (p === "/api/training" || p.startsWith("/api/training/")) return trainingRoutes(req, res, p, m);
+  if (p === "/api/grades") return gradesRoutes(req, res, p, m);
   if (p === "/api/wallet" || p.startsWith("/api/wallet/")) return walletRoutes(req, res, p, m, url);
   if (p === "/api/cutout" || p.startsWith("/api/cutout/") || p === "/api/upscale" || p.startsWith("/api/upscale/")) return cutoutRoutes(req, res, p, m);
   fail(404, "Not found.");

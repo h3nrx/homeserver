@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.7.11
+
+Notenrechner.
+
+- Neues Panel „Notenrechner“ für das Thüringer Oberstufensystem (Notenpunkte 1–15).
+- Fächer legst du selbst an, benennst sie um oder löschst sie. Am Anfang ist die Liste leer.
+- Oben steht ein großer Kreis mit deinem Gesamtdurchschnitt. Er rechnet sich bei jeder Änderung sofort neu.
+- Mit einem Klick auf ein Fach trägst du Noten ein. Jede Note bekommt eine Überschrift, zum Beispiel „Liegestütze“, und ist entweder eine normale Leistung oder eine Kursarbeit.
+- Gewichtung: Normale Leistungen zählen 2/3, die Kursarbeit 1/3. Die Rechnung steht offen auf der Fach-Seite.
+- Noten lassen sich antippen, ändern und löschen. Auch auf der Startseite gibt es eine eigene Kachel dafür.
+
 ## 1.7.10
 
 Neue Designs.
