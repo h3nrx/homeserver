@@ -8,8 +8,8 @@ Minecraft and the Ubuntu update state. Two designs, picked in the admin or with
 letters, the numbers small underneath). Below that a line of status dots, the
 connection and the uptime, refreshed every 2 seconds.
 At the bottom a cat sits next to a command line: typing / lists a few fixed
-commands (Minecraft, bots, Ubuntu updates, the screen, the cat). It is no shell,
-nothing else can be run.
+commands (Minecraft, bots, Ubuntu updates, the screen design, ssh, restart and
+shut down, which ask first). It is no shell, nothing else can be run.
 """
 import json
 import os
@@ -27,6 +27,7 @@ import urllib.request
 from pathlib import Path
 
 BRAND = "__BRAND__"
+OWNER = "__USER__"                   # the account on the server, for the /ssh line
 STATS = Path("/var/lib/panel/stats.json")
 SYS = Path("/var/lib/panel/sysupdate.json")
 PREFS = Path("__HOME__/files/.panel/prefs.json")   # the language picked in the admin
@@ -369,32 +370,34 @@ LANG_CMDS = {
            ("/minecraft neustart", "mc_restart", "Minecraft-Server neu starten"),
            ("/bots neustart", "bots_restart", "alle laufenden Discord-Bots neu starten"),
            ("/updates installieren", "sys_install", "Ubuntu-Updates installieren"),
-           ("/ip", "ip", "die Adressen des Servers zeigen"),
+           ("/ssh", "ssh", "den SSH-Befehl für diesen Server zeigen"),
            ("/design zahlen", "design_numbers", "große Zahlen auf dem Bildschirm"),
            ("/design name", "design_name", "großer Name, Zahlen klein darunter"),
            ("/bildschirm aus", "screen_off", "Bildschirm dunkel, eine Taste weckt ihn"),
-           ("/katze schlafen", "cat_sleep", "die Katze schlafen legen"),
-           ("/katze wach", "cat_wake", "die Katze aufwecken"),
-           ("/hilfe", "help", "alle Befehle zeigen")],
+           ("/neustart", "reboot", "den Laptop neu starten"),
+           ("/ausschalten", "poweroff", "den Laptop ausschalten")],
     "en": [("/minecraft start", "mc_start", "start the Minecraft server"),
            ("/minecraft stop", "mc_stop", "stop the Minecraft server"),
            ("/minecraft restart", "mc_restart", "restart the Minecraft server"),
            ("/bots restart", "bots_restart", "restart all running Discord bots"),
            ("/updates install", "sys_install", "install the Ubuntu updates"),
-           ("/ip", "ip", "show the server's addresses"),
+           ("/ssh", "ssh", "show the SSH command for this server"),
            ("/design numbers", "design_numbers", "big numbers on the screen"),
            ("/design name", "design_name", "big name, the numbers small underneath"),
            ("/screen off", "screen_off", "screen dark, any key wakes it"),
-           ("/cat sleep", "cat_sleep", "put the cat to sleep"),
-           ("/cat wake", "cat_wake", "wake the cat up"),
-           ("/help", "help", "show all commands")],
+           ("/reboot", "reboot", "restart the laptop"),
+           ("/shutdown", "poweroff", "shut the laptop down")],
 }
 ALIASES = {name: key for cmds in LANG_CMDS.values() for name, key, _ in cmds}
 SAY = {
     "de": {"hint": "/ für Befehle", "unknown": "Unbekannter Befehl. Tippe / für alle.", "failed": "Hat nicht geklappt.",
            "mc_start": "Minecraft startet …", "mc_stop": "Minecraft wird gestoppt …", "mc_restart": "Minecraft startet neu …",
            "bots": "{n} Bots starten neu …", "bot1": "1 Bot startet neu …", "nobots": "Es läuft gerade kein Bot.",
-           "cat_sleep": "Pssst, die Katze schläft.", "cat_wake": "Die Katze ist wach.",
+           "ask_reboot": "Laptop wirklich neu starten? Enter = ja, Esc = nein",
+           "ask_poweroff": "Laptop wirklich ausschalten? Enter = ja, Esc = nein", "cancel": "Abgebrochen.",
+           "reboot": "Der Laptop startet neu … Minecraft wird vorher gespeichert.",
+           "poweroff": "Der Laptop schaltet sich aus … Minecraft wird vorher gespeichert.",
+           "The laptop is already shutting down or restarting.": "Der Laptop fährt schon herunter oder startet neu.",
            "sys_wait": "Ubuntu-Updates werden geprüft …", "sys_ok": "Ubuntu-Updates werden installiert. Fortschritt im Admin unter Updates.",
            "An update is already running.": "Es läuft schon ein Update.",
            "Everything is already up to date.": "Ubuntu ist schon aktuell.",
@@ -404,7 +407,10 @@ SAY = {
     "en": {"hint": "/ for commands", "unknown": "Unknown command. Type / for all of them.", "failed": "That didn't work.",
            "mc_start": "Minecraft is starting …", "mc_stop": "Minecraft is stopping …", "mc_restart": "Minecraft is restarting …",
            "bots": "{n} bots are restarting …", "bot1": "1 bot is restarting …", "nobots": "No bot is running right now.",
-           "cat_sleep": "Shh, the cat is asleep.", "cat_wake": "The cat is awake.",
+           "ask_reboot": "Really restart the laptop? Enter = yes, Esc = no",
+           "ask_poweroff": "Really shut the laptop down? Enter = yes, Esc = no", "cancel": "Cancelled.",
+           "reboot": "The laptop is restarting … Minecraft is saved first.",
+           "poweroff": "The laptop is shutting down … Minecraft is saved first.",
            "sys_wait": "Checking for Ubuntu updates …", "sys_ok": "Installing the Ubuntu updates. Progress in the admin under Updates.",
            "noagent": "The agent doesn't answer.", "noip": "No address found.",
            "design_numbers": "Design: big numbers.", "design_name": "Design: big name."},
@@ -422,13 +428,13 @@ def ctl(*args: str) -> bool:
         return False
 
 
-def agent(action: str, timeout: float = 150) -> tuple[bool, str]:
+def agent(action: str, timeout: float = 150, **args) -> tuple[bool, str]:
     """Hands a job to the panel agent like the admin does; (ok, error)."""
     name = f"screen-{os.urandom(6).hex()}.json"
     cmd, resp = Path("/var/lib/panel/commands"), Path("/var/lib/panel/responses") / name
     try:
         tmp = cmd / f".{name}.tmp"
-        tmp.write_text(json.dumps({"action": action}))
+        tmp.write_text(json.dumps({"action": action, **args}))
         tmp.rename(cmd / name)
     except OSError:
         return False, "noagent"
@@ -443,14 +449,10 @@ def agent(action: str, timeout: float = 150) -> tuple[bool, str]:
     return False, "noagent"
 
 
-def addresses() -> str:
+def ssh_line() -> str:
+    """The ssh command to type on another computer in the same network."""
     lan, _ = address()
-    ts = ""
-    try:
-        ts = subprocess.run(["tailscale", "ip", "-4"], capture_output=True, text=True, timeout=4).stdout.split()[0]
-    except (OSError, subprocess.SubprocessError, IndexError):
-        pass
-    return "   ·   ".join(x for x in (f"LAN {lan}" if lan else "", f"Tailscale {ts}" if ts else "") if x)
+    return f"ssh {OWNER}@{lan}" if lan else ""
 
 
 def blank(on: bool) -> None:
@@ -521,6 +523,7 @@ class Prompt:
         self.cat, self.text, self.sel, self.msg, self.msg_colour, self.msg_until = cat, "", 0, "", FG, 0.0
         self.dark = self.redraw = False
         self.esc = ""
+        self.confirm = ""                # "reboot" / "poweroff" while it waits for Enter or Esc
 
     def suggestions(self) -> list[tuple[str, str, str]]:
         if not self.text.startswith("/"):
@@ -533,6 +536,13 @@ class Prompt:
         self.msg, self.msg_colour, self.msg_until = text, colour, time.time() + 8
 
     def feed(self, data: str) -> None:
+        if self.confirm:                 # Enter does it, any other key cancels
+            key, self.confirm = self.confirm, ""
+            if data in ("\r", "\n", "\r\n"):
+                self.power(key)
+            else:
+                self.say(SAY[lang()]["cancel"], DIM)
+            return
         data = self.esc + data
         self.esc = ""
         i = 0
@@ -586,9 +596,7 @@ class Prompt:
 
     def run(self, key: str) -> None:
         say = SAY[lang()]
-        if key == "help":
-            self.text = "/"
-        elif key.startswith("mc_"):
+        if key.startswith("mc_"):
             ctl("reset-failed", MC_UNIT)
             verb = {"mc_start": "start", "mc_stop": "stop", "mc_restart": "restart"}[key]
             ok = ctl(verb, "--no-block", MC_UNIT)
@@ -615,8 +623,8 @@ class Prompt:
                 s = SAY[lang()]
                 self.say(s["sys_ok"] if ok else s.get(err, s["failed"] if lang() == "de" else err or s["failed"]), OK if ok else WARN)
             threading.Thread(target=job, daemon=True).start()
-        elif key == "ip":
-            text = addresses()
+        elif key == "ssh":
+            text = ssh_line()
             self.say(text or say["noip"], FG if text else WARN)
             self.msg_until = time.time() + 30
         elif key.startswith("design_"):
@@ -625,12 +633,22 @@ class Prompt:
             self.redraw = True
         elif key == "screen_off":
             self.dark = True
-        elif key == "cat_sleep":
-            self.cat.sleep(random.randint(400, 800))
-            self.say(say["cat_sleep"], DIM)
-        elif key == "cat_wake":
-            self.cat.wake()
-            self.say(say["cat_wake"], DIM)
+        elif key in ("reboot", "poweroff"):
+            self.confirm = key
+            self.say(say["ask_" + key], WARN)
+            self.msg_until = time.time() + 3600
+
+    def power(self, mode: str) -> None:
+        """Same as the power button in the admin: the agent saves Minecraft first."""
+        self.say(SAY[lang()][mode], WARN)
+        self.msg_until = time.time() + 3600
+
+        def job():
+            ok, err = agent("power", timeout=30, mode=mode)
+            if not ok:
+                s = SAY[lang()]
+                self.say(s.get(err, s["failed"] if lang() == "de" else err or s["failed"]), BAD)
+        threading.Thread(target=job, daemon=True).start()
 
     def draw(self, g: "Grid", m: int, width: int) -> None:
         if self.msg and time.time() < self.msg_until:

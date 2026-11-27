@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.7.23
+
+Restart and shut down from the laptop.
+
+- Laptop screen: new commands /reboot and /shutdown. They ask first (Enter = yes, Esc = no) and work like the power button in the admin, so Minecraft is saved first. In German: /neustart, /ausschalten.
+- Laptop screen: /ip is now /ssh and shows the ready-made command, e.g. ssh user@address.
+- Laptop screen: the cat commands and /help are gone. Typing / shows every command anyway, and the cat still naps on its own.
+
 ## 1.7.22
 
 Two designs for the laptop screen.
