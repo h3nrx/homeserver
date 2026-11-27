@@ -5,9 +5,11 @@ Started by homeserver-screen.service, switched on and off in the admin
 (System). Only reads: the agent's stats, the public status of the site, the
 Discord bot units and the Ubuntu update state. Draws a calm page: four big
 numbers, a line of status dots, the connection and the uptime, refreshed every 2 seconds.
+Below that a little cat strolls along the bottom.
 """
 import json
 import os
+import random
 import re
 import shutil
 import signal
@@ -231,7 +233,7 @@ def frame(cols: int, lines: int) -> list[str]:
     g.put(cols - m - len(clock), 2, clock, FG)
     g.put(cols - m - len(date), 3, date, DIM)
 
-    top = max(6, (lines - 17) // 2 + 1)
+    top = max(5, (lines - 23) // 2 + 2)     # leaves the bottom rows to the cat
     if fresh:
         cpu = (st.get("cpu") or {}).get("total") or 0
         temp = st.get("temp_c")
@@ -294,27 +296,102 @@ def frame(cols: int, lines: int) -> list[str]:
     return g.render()
 
 
+# The cat at the bottom: 3 rows of plain characters, facing right; mirrored for left.
+CAT_WALK = [
+    ["      /\\_/\\ ", " \\___/ o.o )", "  /_/   /_/ "],
+    ["      /\\_/\\ ", " /___/ o.o )", "   \\_\\   \\_\\"],
+]
+CAT_SIT = ["      /\\_/\\ ", "  ,__/ o.o )", " (___(_)(_) "]
+MIRROR = str.maketrans("/\\()<>,", "\\/)(><,")
+CAT_W = 13
+STRIP = 5          # rows: room for a hop, 3 rows of cat, the ground
+
+
+def mirror(rows: list[str]) -> list[str]:
+    return [r.ljust(CAT_W)[::-1].translate(MIRROR) for r in rows]
+
+
+class Cat:
+    """Walks, now and then hops, sits down for a while, blinks and turns around."""
+
+    def __init__(self):
+        self.x, self.dir, self.state, self.t, self.tick, self.blink = 10.0, 1, "walk", 0, 0, 0
+
+    def step(self, lo: int, hi: int) -> None:
+        self.tick += 1
+        r = random.random()
+        if self.state == "sit":
+            self.t -= 1
+            self.blink = max(0, self.blink - 1) if self.blink else (2 if random.random() < 0.03 else 0)
+            if self.t <= 0:
+                self.state, self.blink = "walk", 0
+                if random.random() < 0.5:
+                    self.dir = -self.dir
+            return
+        if self.state == "hop":
+            self.t -= 1
+            self.x += self.dir * 1.5
+            if self.t <= 0:
+                self.state = "walk"
+        else:
+            self.x += self.dir * 0.75
+            if r < 0.006:
+                self.state, self.t = "sit", random.randint(25, 80)
+            elif r < 0.018:
+                self.state, self.t = "hop", 5
+            elif r < 0.023:
+                self.dir = -self.dir
+        if self.x <= lo:
+            self.x, self.dir = lo, 1
+        elif self.x >= hi - CAT_W:
+            self.x, self.dir = hi - CAT_W, -1
+
+    def draw(self, cols: int, lo: int, hi: int) -> list[str]:
+        g = Grid(cols, STRIP)
+        g.put(lo, STRIP - 1, "─" * (hi - lo), DIM)
+        if self.state == "sit":
+            rows = [x.replace("o.o", "-.-") for x in CAT_SIT] if self.blink else CAT_SIT
+        else:
+            rows = CAT_WALK[0 if self.state == "hop" else (self.tick // 2) % 2]
+        rows = rows if self.dir > 0 else mirror(rows)
+        y = 0 if self.state == "hop" and 1 <= self.t <= 4 else 1
+        for i, line in enumerate(rows):
+            for j, ch in enumerate(line):
+                if ch != " ":
+                    g.put(int(self.x) + j, y + i, ch, "37")
+        return g.render()
+
+
 def main() -> None:
     out = sys.stdout
     stop = lambda *_: (out.write("\033]R\033[0m\033[2J\033[H\033[?25h"), out.flush(), sys.exit(0))
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     out.write(SET_PALETTE + "\033[0m\033[?25l\033[2J")   # own colours, no cursor
-    last = None
+    last, due, cat = None, 0.0, Cat()
     while True:
         cols, lines = shutil.get_terminal_size((120, 33))
-        try:
-            rows = frame(cols, lines)
-        except Exception as e:      # never die because one value was odd
-            rows = [f"  {e}"]
         if (cols, lines) != last:
             out.write("\033[2J")
-            last = (cols, lines)
-        rows = (rows + [""] * lines)[:lines]
-        out.write("\033[H" + "\n".join(r + "\033[K" for r in rows[:-1]) + rows[-1] + "\033[K")
+            last, due = (cols, lines), 0.0
+        strip = lines - STRIP - 1 if lines >= 26 and cols >= 60 else lines
+        buf = ""
+        if time.time() >= due:              # the values: every 2 seconds
+            try:
+                rows = frame(cols, lines)
+            except Exception as e:          # never die because one value was odd
+                rows = [f"  {e}"]
+            rows = (rows + [""] * lines)[:strip]
+            buf += "\033[H" + "\n".join(r + "\033[K" for r in rows)
+            due = time.time() - time.time() % 2 + 2.05
+        if strip < lines:                   # the cat: about 7 times a second
+            m = 6 if cols >= 80 else 1
+            cat.step(m, cols - m)
+            for i, r in enumerate(cat.draw(cols, m, cols - m)):
+                buf += f"\033[{strip + i + 1};1H{r}\033[K"
+        out.write(buf)
         out.flush()
-        time.sleep(2 - time.time() % 2 + 0.05)
-
+        time.sleep(0.15)
 
 if __name__ == "__main__":
     main()

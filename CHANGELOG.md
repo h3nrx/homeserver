@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.7.17
+
+A cat on the laptop screen.
+
+- At the bottom of the laptop screen, a little cat now strolls along a line.
+- It walks left and right, hops now and then, sits down for a while, blinks and turns around.
+- The values above stay where they are and still refresh every 2 seconds.
+
 ## 1.7.16
 
 Laptop screen tidied up.
