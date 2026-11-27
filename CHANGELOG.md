@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.7.22
+
+Two designs for the laptop screen.
+
+- Laptop screen: pick between "Big numbers" (as before) and "Big name" (the server's name in big letters, the numbers small underneath). Switch in the admin under System → Laptop screen, the laptop changes right away. Or type /design numbers or /design name on the laptop.
+- Laptop screen: only three status dots now: website, Minecraft and Ubuntu updates.
+- Admin: the clock tile no longer shows a strange circle when the mouse comes close.
+
 ## 1.7.21
 
 Smoother tile light.

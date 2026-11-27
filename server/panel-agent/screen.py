@@ -2,9 +2,11 @@
 """Status screen for the laptop's own display (tty1).
 
 Started by homeserver-screen.service, switched on and off in the admin
-(System). Only reads: the agent's stats, the public status of the site, the
-Discord bot units and the Ubuntu update state. Draws a calm page: four big
-numbers, a line of status dots, the connection and the uptime, refreshed every 2 seconds.
+(System). Only reads: the agent's stats, the public status of the site,
+Minecraft and the Ubuntu update state. Two designs, picked in the admin or with
+/design: "numbers" (four big numbers) or "name" (the server's name in big
+letters, the numbers small underneath). Below that a line of status dots, the
+connection and the uptime, refreshed every 2 seconds.
 At the bottom a cat sits next to a command line: typing / lists a few fixed
 commands (Minecraft, bots, Ubuntu updates, the screen, the cat). It is no shell,
 nothing else can be run.
@@ -29,6 +31,8 @@ STATS = Path("/var/lib/panel/stats.json")
 SYS = Path("/var/lib/panel/sysupdate.json")
 PREFS = Path("__HOME__/files/.panel/prefs.json")   # the language picked in the admin
 UBUNTU = Path("/var/lib/update-notifier/updates-available")
+DESIGN = Path("/var/lib/homeserver-screen/design")   # "numbers" or "name"; the admin writes it too
+DESIGNS = ("numbers", "name")
 
 # The Linux console has 16 colours that can be redefined: near-black, one soft
 # lilac accent, greys, and green / amber / red only where something has a state.
@@ -45,14 +49,38 @@ GLYPHS = {
     "6": ["###", "#  ", "###", "# #", "###"], "7": ["###", "  #", "  #", "  #", "  #"], "8": ["###", "# #", "###", "# #", "###"],
     "9": ["###", "# #", "###", "  #", "###"], "-": ["   ", "   ", "###", "   ", "   "],
 }
+# 5x5 block letters for the server's name in the "name" design
+LETTERS = {
+    "A": [" ### ", "#   #", "#####", "#   #", "#   #"], "B": ["#### ", "#   #", "#### ", "#   #", "#### "],
+    "C": [" ####", "#    ", "#    ", "#    ", " ####"], "D": ["#### ", "#   #", "#   #", "#   #", "#### "],
+    "E": ["#####", "#    ", "#### ", "#    ", "#####"], "F": ["#####", "#    ", "#### ", "#    ", "#    "],
+    "G": [" ####", "#    ", "#  ##", "#   #", " ####"], "H": ["#   #", "#   #", "#####", "#   #", "#   #"],
+    "I": ["###", " # ", " # ", " # ", "###"], "J": ["  ###", "   # ", "   # ", "#  # ", " ##  "],
+    "K": ["#   #", "#  # ", "###  ", "#  # ", "#   #"], "L": ["#    ", "#    ", "#    ", "#    ", "#####"],
+    "M": ["#   #", "## ##", "# # #", "#   #", "#   #"], "N": ["#   #", "##  #", "# # #", "#  ##", "#   #"],
+    "O": [" ### ", "#   #", "#   #", "#   #", " ### "], "P": ["#### ", "#   #", "#### ", "#    ", "#    "],
+    "Q": [" ### ", "#   #", "# # #", "#  # ", " ## #"], "R": ["#### ", "#   #", "#### ", "#  # ", "#   #"],
+    "S": [" ####", "#    ", " ### ", "    #", "#### "], "T": ["#####", "  #  ", "  #  ", "  #  ", "  #  "],
+    "U": ["#   #", "#   #", "#   #", "#   #", " ### "], "V": ["#   #", "#   #", "#   #", " # # ", "  #  "],
+    "W": ["#   #", "#   #", "# # #", "## ##", "#   #"], "X": ["#   #", " # # ", "  #  ", " # # ", "#   #"],
+    "Y": ["#   #", " # # ", "  #  ", "  #  ", "  #  "], "Z": ["#####", "   # ", "  #  ", " #   ", "#####"],
+    "0": [" ### ", "#  ##", "# # #", "##  #", " ### "], "1": ["  #  ", " ##  ", "  #  ", "  #  ", " ### "],
+    "2": ["#### ", "    #", " ### ", "#    ", "#####"], "3": ["#### ", "    #", " ### ", "    #", "#### "],
+    "4": ["#   #", "#   #", "#####", "    #", "    #"], "5": ["#####", "#    ", "#### ", "    #", "#### "],
+    "6": [" ### ", "#    ", "#### ", "#   #", " ### "], "7": ["#####", "    #", "   # ", "  #  ", "  #  "],
+    "8": [" ### ", "#   #", " ### ", "#   #", " ### "], "9": [" ### ", "#   #", " ####", "    #", " ### "],
+    ".": ["  ", "  ", "  ", "  ", "##"], "-": ["    ", "    ", "####", "    ", "    "],
+    "_": ["     ", "     ", "     ", "     ", "#####"], " ": ["   "] * 5,
+    "Ä": ["#   #", " ### ", "#   #", "#####", "#   #"], "Ö": ["#   #", " ### ", "#   #", "#   #", " ### "],
+    "Ü": ["#   #", "     ", "#   #", "#   #", " ### "],
+}
 TEXT = {
     "de": {
         "days": ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"],
         "months": ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"],
         "date": "{day}, {d}. {month}", "dh": "{d} Tagen, {h} Std", "d1": "1 Tag, {h} Std", "hm": "{h} Std {m} Min", "up": "an seit {t}",
         "cpu": "cpu %", "temp": "°C", "ram": "ram %", "disk": "speicher %", "loading": "Werte werden geladen…",
-        "web": "website", "web_down": "website nicht erreichbar", "bot1": "1 Bot", "bots": "{n} Bots",
-        "crash1": "1 Bot abgestürzt", "crash": "{n} Bots abgestürzt",
+        "web": "website", "web_down": "website nicht erreichbar", "s_ram": "ram", "s_disk": "speicher",
         "mc_off": "minecraft aus", "mc_0": "minecraft · niemand spielt", "mc_1": "minecraft · 1 spielt", "mc_n": "minecraft · {n} spielen",
         "updating": "wird aktualisiert…", "reboot": "Neustart nötig", "current": "ubuntu aktuell",
         "upd1": "1 Ubuntu-Update", "upd": "{n} Ubuntu-Updates", "sec": "{n} Sicherheit", "nonet": "kein Netz",
@@ -62,8 +90,7 @@ TEXT = {
         "months": ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
         "date": "{day}, {d} {month}", "dh": "{d} days, {h} h", "d1": "1 day, {h} h", "hm": "{h} h {m} min", "up": "up {t}",
         "cpu": "cpu %", "temp": "°C", "ram": "ram %", "disk": "disk %", "loading": "Loading…",
-        "web": "website", "web_down": "website not reachable", "bot1": "1 bot", "bots": "{n} bots",
-        "crash1": "1 bot crashed", "crash": "{n} bots crashed",
+        "web": "website", "web_down": "website not reachable", "s_ram": "ram", "s_disk": "disk",
         "mc_off": "minecraft off", "mc_0": "minecraft · nobody playing", "mc_1": "minecraft · 1 playing", "mc_n": "minecraft · {n} playing",
         "updating": "updating…", "reboot": "restart needed", "current": "ubuntu up to date",
         "upd1": "1 Ubuntu update", "upd": "{n} Ubuntu updates", "sec": "{n} security", "nonet": "no network",
@@ -110,6 +137,16 @@ class Grid:
                         self.put(x + i * 2, y + r, "██", colour)
             x += len(g[0]) * 2 + 2
 
+    def letters(self, x: int, y: int, text: str, colour: str, px: int) -> None:
+        """The name in block letters, every pixel px characters wide."""
+        for ch in text.upper():
+            g = LETTERS.get(ch, LETTERS[" "])
+            for r in range(5):
+                for i, p in enumerate(g[r]):
+                    if p == "#":
+                        self.put(x + i * px, y + r, "█" * px, colour)
+            x += (len(g[0]) + 1) * px
+
     def render(self) -> list[str]:
         out = []
         for cells in self.cells:
@@ -125,6 +162,28 @@ class Grid:
 
 def big_width(text: str) -> int:
     return sum(len(GLYPHS.get(c, GLYPHS["-"])[0]) * 2 + 2 for c in text) - 2
+
+
+def letters_width(text: str, px: int) -> int:
+    return sum((len(LETTERS.get(c, LETTERS[" "])[0]) + 1) * px for c in text.upper()) - px
+
+
+def design() -> str:
+    try:
+        d = DESIGN.read_text().strip()
+    except OSError:
+        d = ""
+    return d if d in DESIGNS else "numbers"
+
+
+def set_design(d: str) -> bool:
+    try:
+        tmp = DESIGN.with_name(".design.tmp")
+        tmp.write_text(d + "\n")
+        tmp.rename(DESIGN)
+        return True
+    except OSError:
+        return False
 
 
 def level(frac: float) -> str:
@@ -151,23 +210,6 @@ def public() -> dict | None:
             return json.loads(r.read(4096))
     except Exception:
         return None
-
-
-_bots = {"t": 0.0, "v": (0, 0)}
-
-
-def bots() -> tuple[int, int]:
-    """(running, crashed) Discord bots, asked every 10 seconds."""
-    if time.time() - _bots["t"] > 10:
-        _bots["t"] = time.time()
-        try:
-            out = subprocess.run(["systemctl", "list-units", "--all", "--plain", "--no-legend", "discord-bot@*"],
-                                 capture_output=True, text=True, timeout=5).stdout
-            states = [line.split()[2] for line in out.splitlines() if len(line.split()) > 2]
-            _bots["v"] = (states.count("active"), states.count("failed"))
-        except (OSError, subprocess.SubprocessError):
-            pass
-    return _bots["v"]
 
 
 def ubuntu_waiting() -> tuple[int, int] | None:
@@ -229,9 +271,14 @@ def frame(cols: int, lines: int) -> list[str]:
     now = time.localtime()
     g = Grid(cols, lines)
     m = 6 if cols >= 80 else 1
+    look = design()
+    px = 2 if letters_width(BRAND, 2) <= cols - 2 * m else 1 if letters_width(BRAND, 1) <= cols - 2 * m else 0
+    if look == "name" and not px:
+        look = "numbers"                # a name too long for block letters: the numbers page
 
-    # top: name on the left, time and date on the right
-    g.put(m, 2, BRAND, ACC)
+    # top: name on the left (unless it's big below), time and date on the right
+    if look == "numbers":
+        g.put(m, 2, BRAND, ACC)
     clock = time.strftime("%H:%M", now)
     date = T["date"].format(day=T["days"][now.tm_wday], d=now.tm_mday, month=T["months"][now.tm_mon - 1])
     g.put(cols - m - len(clock), 2, clock, FG)
@@ -251,6 +298,17 @@ def frame(cols: int, lines: int) -> list[str]:
             (f"{round(mu / mt * 100)}", T["ram"], level(mu / mt)),
             (f"{round(df * 100)}" if df is not None else "-", T["disk"], level(df or 0)),
         ]
+    if look == "name":
+        # the name big, in the accent colour; the numbers small in one line under it
+        g.letters((cols - letters_width(BRAND, px)) // 2, top + 1, BRAND, ACC, px)
+        if fresh:
+            small = [("cpu ", DIM), (f"{cells[0][0]} %", cells[0][2]), ("     ", FG), (f"{cells[1][0]} °C", cells[1][2]),
+                     ("     ", FG), (T["s_ram"] + " ", DIM), (f"{cells[2][0]} %", cells[2][2]),
+                     ("     ", FG), (T["s_disk"] + " ", DIM), (f"{cells[3][0]} %", cells[3][2])]
+            g.row(top + 8, small)
+        else:
+            g.row(top + 8, [(T["loading"], DIM)])
+    elif fresh:
         cw = min(28, (cols - 2) // 4)
         x0 = (cols - cw * 4) // 2
         for i, (num, label, colour) in enumerate(cells):
@@ -259,13 +317,8 @@ def frame(cols: int, lines: int) -> list[str]:
     else:
         g.row(top + 3, [(T["loading"], DIM)])
 
-    # one line of status dots: only what can go wrong or what's going on
+    # three status dots: the website, Minecraft and Ubuntu
     dots = [(OK, T["web"]) if pub else (BAD, T["web_down"])]
-    run, crashed = bots()
-    if crashed:
-        dots.append((BAD, T["crash1"] if crashed == 1 else T["crash"].format(n=crashed)))
-    elif run:
-        dots.append((OK, T["bot1"] if run == 1 else T["bots"].format(n=run)))
     mc = (pub or {}).get("mc") or {}
     n = int(mc.get("online") or 0)
     if mc.get("active"):
@@ -317,6 +370,8 @@ LANG_CMDS = {
            ("/bots neustart", "bots_restart", "alle laufenden Discord-Bots neu starten"),
            ("/updates installieren", "sys_install", "Ubuntu-Updates installieren"),
            ("/ip", "ip", "die Adressen des Servers zeigen"),
+           ("/design zahlen", "design_numbers", "große Zahlen auf dem Bildschirm"),
+           ("/design name", "design_name", "großer Name, Zahlen klein darunter"),
            ("/bildschirm aus", "screen_off", "Bildschirm dunkel, eine Taste weckt ihn"),
            ("/katze schlafen", "cat_sleep", "die Katze schlafen legen"),
            ("/katze wach", "cat_wake", "die Katze aufwecken"),
@@ -327,6 +382,8 @@ LANG_CMDS = {
            ("/bots restart", "bots_restart", "restart all running Discord bots"),
            ("/updates install", "sys_install", "install the Ubuntu updates"),
            ("/ip", "ip", "show the server's addresses"),
+           ("/design numbers", "design_numbers", "big numbers on the screen"),
+           ("/design name", "design_name", "big name, the numbers small underneath"),
            ("/screen off", "screen_off", "screen dark, any key wakes it"),
            ("/cat sleep", "cat_sleep", "put the cat to sleep"),
            ("/cat wake", "cat_wake", "wake the cat up"),
@@ -342,13 +399,15 @@ SAY = {
            "An update is already running.": "Es läuft schon ein Update.",
            "Everything is already up to date.": "Ubuntu ist schon aktuell.",
            "Stop Minecraft first. Docker restarts with this update.": "Erst Minecraft stoppen, Docker startet bei diesem Update neu.",
-           "noagent": "Der Agent antwortet nicht.", "noip": "Keine Adresse gefunden."},
+           "noagent": "Der Agent antwortet nicht.", "noip": "Keine Adresse gefunden.",
+           "design_numbers": "Design: große Zahlen.", "design_name": "Design: großer Name."},
     "en": {"hint": "/ for commands", "unknown": "Unknown command. Type / for all of them.", "failed": "That didn't work.",
            "mc_start": "Minecraft is starting …", "mc_stop": "Minecraft is stopping …", "mc_restart": "Minecraft is restarting …",
            "bots": "{n} bots are restarting …", "bot1": "1 bot is restarting …", "nobots": "No bot is running right now.",
            "cat_sleep": "Shh, the cat is asleep.", "cat_wake": "The cat is awake.",
            "sys_wait": "Checking for Ubuntu updates …", "sys_ok": "Installing the Ubuntu updates. Progress in the admin under Updates.",
-           "noagent": "The agent doesn't answer.", "noip": "No address found."},
+           "noagent": "The agent doesn't answer.", "noip": "No address found.",
+           "design_numbers": "Design: big numbers.", "design_name": "Design: big name."},
 }
 
 
@@ -460,7 +519,7 @@ class Prompt:
 
     def __init__(self, cat: Cat):
         self.cat, self.text, self.sel, self.msg, self.msg_colour, self.msg_until = cat, "", 0, "", FG, 0.0
-        self.dark = False
+        self.dark = self.redraw = False
         self.esc = ""
 
     def suggestions(self) -> list[tuple[str, str, str]]:
@@ -560,6 +619,10 @@ class Prompt:
             text = addresses()
             self.say(text or say["noip"], FG if text else WARN)
             self.msg_until = time.time() + 30
+        elif key.startswith("design_"):
+            ok = set_design(key[7:])
+            self.say(say[key] if ok else say["failed"], OK if ok else BAD)
+            self.redraw = True
         elif key == "screen_off":
             self.dark = True
         elif key == "cat_sleep":
@@ -631,7 +694,7 @@ def main() -> None:
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     out.write(SET_PALETTE + "\033[0m\033[?25l\033[2J")   # own colours, no cursor
-    last, due, tick, shown, dark = None, 0.0, 0.0, 0, False
+    last, due, tick, shown, dark, look = None, 0.0, 0.0, 0, False, design()
     cat = Cat()
     prompt = Prompt(cat)
     while True:
@@ -654,6 +717,10 @@ def main() -> None:
         strip = lines - STRIP - 1 if lines >= 26 and cols >= 60 else lines
         pop = prompt.popup(6 if cols >= 80 else 1, strip - 1) if strip < lines else []
         extra = pop[:-3]                # entries that don't fit into the strip go above it
+        if design() != look or prompt.redraw:
+            look, prompt.redraw = design(), False   # picked in the admin or with /design: switch right away
+            out.write("\033[2J")
+            due = 0.0
         if len(extra) < shown:
             due = 0.0                   # the list got shorter: bring the values back underneath
         buf = ""

@@ -3518,7 +3518,11 @@ async function route(req, res) {
   if (!isAuthed(req)) fail(401, "Please sign in.");
 
   if (p === "/api/screen" && m === "GET") return send(res, 200, await agent("screen_get"));
-  if (p === "/api/screen" && m === "POST") return send(res, 200, await agent("screen_set", { on: !!(await readJson(req)).on }, { timeout: 30e3 }));
+  if (p === "/api/screen" && m === "POST") {
+    const b = await readJson(req);
+    const args = typeof b.design === "string" ? { design: b.design } : { on: !!b.on };
+    return send(res, 200, await agent("screen_set", args, { timeout: 30e3 }));
+  }
   if (p === "/api/blocked" && m === "GET") return send(res, 200, { items: [...(await blockedList())].map(([ip, until]) => ({ ip, until })).reverse() });
   if (p === "/api/blocked/unblock" && m === "POST") {
     const { ip } = await readJson(req);

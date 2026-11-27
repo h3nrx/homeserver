@@ -27,6 +27,8 @@ ProtectControlGroups=yes
 PrivateTmp=yes
 # only to hand jobs to the panel agent (e.g. Ubuntu updates), the same way the admin does
 ReadWritePaths=-/var/lib/panel/commands -/var/lib/panel/responses
+# the picked design (/var/lib/homeserver-screen/design)
+StateDirectory=homeserver-screen
 
 [Install]
 WantedBy=multi-user.target

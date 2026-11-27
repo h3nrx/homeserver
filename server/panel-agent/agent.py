@@ -727,17 +727,33 @@ def sys_install(_p=None) -> dict:
 
 # ---- status screen on the laptop's own display (tty1) ----
 SCREEN_UNIT = "homeserver-screen.service"
+SCREEN_DESIGN = Path("/var/lib/homeserver-screen/design")   # read by screen.py, also set there with /design
+SCREEN_DESIGNS = ("numbers", "name")
 
 
 def screen_get(_p=None) -> dict:
     ok = Path("/dev/tty1").exists() and Path(f"/etc/systemd/system/{SCREEN_UNIT}").exists()
+    try:
+        design = SCREEN_DESIGN.read_text().strip()
+    except OSError:
+        design = ""
     return {"supported": ok, "on": ok and systemctl("is-enabled", SCREEN_UNIT).stdout.strip() == "enabled",
-            "running": ok and unit_state(SCREEN_UNIT) == "active"}
+            "running": ok and unit_state(SCREEN_UNIT) == "active",
+            "design": design if design in SCREEN_DESIGNS else "numbers"}
 
 
 def screen_set(p) -> dict:
     if not screen_get()["supported"]:
         raise ValueError("This server has no screen of its own.")
+    if "design" in p:                   # only the look changes; the screen picks it up within 2 seconds
+        if p["design"] not in SCREEN_DESIGNS:
+            raise ValueError("Unknown design.")
+        SCREEN_DESIGN.parent.mkdir(parents=True, exist_ok=True)
+        tmp = SCREEN_DESIGN.with_name(".design.tmp")
+        tmp.write_text(p["design"] + "\n")
+        tmp.rename(SCREEN_DESIGN)
+        log(f"screen design {p['design']}")
+        return screen_get()
     if p.get("on"):
         check(systemctl("enable", "--now", SCREEN_UNIT), "Switching the screen on")
     else:
