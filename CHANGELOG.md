@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.21
+
+Smoother tile light.
+
+- Admin: the light under the tiles no longer flickers or jumps when the mouse leaves a tile. It now fades out softly where the mouse was.
+
 ## 1.7.20
 
 Folder ZIPs, semesters and more laptop commands.

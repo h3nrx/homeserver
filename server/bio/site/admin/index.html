@@ -1252,13 +1252,19 @@ html { scrollbar-color: rgb(var(--text-rgb) / .18) transparent; }
 .deck-head:has([data-tiles-done]) { position: sticky; top: 68px; z-index: 45; }
 
 /* ---------- tiles: a light under the glass that follows the cursor ---------- */
+@property --lit { syntax: "<number>"; inherits: false; initial-value: 0; }
 .tile { --mx: 0px; --my: 0px; }
 .tile::after { content: ""; position: absolute; inset: 0; z-index: 2; border-radius: inherit; padding: 1px; pointer-events: none; opacity: 0; transition: opacity .35s;
   background: radial-gradient(280px circle at var(--mx) var(--my), color-mix(in srgb, var(--accent, var(--brand)) 85%, white), transparent 70%);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
 @media (hover: hover) {
   .tiles.lit .tile::after { opacity: 1; }
-  .tiles.lit .tile::before { opacity: 1; background: radial-gradient(460px circle at var(--mx) var(--my), color-mix(in srgb, var(--accent, var(--brand)) 15%, transparent), transparent 70%); }
+  /* the cursor light and the corner glow are always both there; only the light's strength (--lit) changes,
+     so leaving the tiles fades it out instead of snapping back to the corner glow */
+  .tile::before { transition: opacity .45s ease, --lit .45s ease;
+    background: radial-gradient(460px circle at var(--mx) var(--my), color-mix(in srgb, var(--accent, var(--brand)) calc(15% * var(--lit)), transparent), transparent 70%),
+      radial-gradient(380px 220px at 0% 0%, color-mix(in srgb, var(--accent, transparent) 17%, transparent), transparent 72%); }
+  .tiles.lit .tile::before { --lit: 1; opacity: 1; }
   a.tile:hover .tile-icon, .tile.link:hover .tile-icon { transform: scale(1.08) rotate(-4deg); box-shadow: 0 0 26px color-mix(in srgb, var(--accent) 45%, transparent); }
 }
 .tile-icon { transition: transform .4s var(--ease), box-shadow .4s; }
