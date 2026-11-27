@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.16
+
+Laptop screen tidied up.
+
+- The big numbers no longer have a percent sign. The % now sits small in the label below ("cpu %").
+- The uptime moved from the bottom left to the middle, below the connection.
+
 ## 1.7.15
 
 Calmer laptop screen.

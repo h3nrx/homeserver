@@ -4,7 +4,7 @@
 Started by homeserver-screen.service, switched on and off in the admin
 (System). Only reads: the agent's stats, the public status of the site, the
 Discord bot units and the Ubuntu update state. Draws a calm page: four big
-numbers, a line of status dots and the connection, refreshed every 2 seconds.
+numbers, a line of status dots, the connection and the uptime, refreshed every 2 seconds.
 """
 import json
 import os
@@ -37,14 +37,14 @@ GLYPHS = {
     "0": ["###", "# #", "# #", "# #", "###"], "1": [" # ", "## ", " # ", " # ", "###"], "2": ["###", "  #", "###", "#  ", "###"],
     "3": ["###", "  #", " ##", "  #", "###"], "4": ["# #", "# #", "###", "  #", "  #"], "5": ["###", "#  ", "###", "  #", "###"],
     "6": ["###", "#  ", "###", "# #", "###"], "7": ["###", "  #", "  #", "  #", "  #"], "8": ["###", "# #", "###", "# #", "###"],
-    "9": ["###", "# #", "###", "  #", "###"], "%": ["##  #", "## # ", "  #  ", " # ##", "#  ##"], "-": ["   ", "   ", "###", "   ", "   "],
+    "9": ["###", "# #", "###", "  #", "###"], "-": ["   ", "   ", "###", "   ", "   "],
 }
 TEXT = {
     "de": {
         "days": ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"],
         "months": ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"],
         "date": "{day}, {d}. {month}", "dh": "{d} Tagen, {h} Std", "d1": "1 Tag, {h} Std", "hm": "{h} Std {m} Min", "up": "an seit {t}",
-        "cpu": "cpu", "temp": "°C", "ram": "ram", "disk": "speicher", "loading": "Werte werden geladen…",
+        "cpu": "cpu %", "temp": "°C", "ram": "ram %", "disk": "speicher %", "loading": "Werte werden geladen…",
         "web": "website", "web_down": "website nicht erreichbar", "bot1": "1 Bot", "bots": "{n} Bots",
         "crash1": "1 Bot abgestürzt", "crash": "{n} Bots abgestürzt",
         "mc_off": "minecraft aus", "mc_0": "minecraft · niemand spielt", "mc_1": "minecraft · 1 spielt", "mc_n": "minecraft · {n} spielen",
@@ -55,7 +55,7 @@ TEXT = {
         "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
         "months": ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
         "date": "{day}, {d} {month}", "dh": "{d} days, {h} h", "d1": "1 day, {h} h", "hm": "{h} h {m} min", "up": "up {t}",
-        "cpu": "cpu", "temp": "°C", "ram": "ram", "disk": "disk", "loading": "Loading…",
+        "cpu": "cpu %", "temp": "°C", "ram": "ram %", "disk": "disk %", "loading": "Loading…",
         "web": "website", "web_down": "website not reachable", "bot1": "1 bot", "bots": "{n} bots",
         "crash1": "1 bot crashed", "crash": "{n} bots crashed",
         "mc_off": "minecraft off", "mc_0": "minecraft · nobody playing", "mc_1": "minecraft · 1 playing", "mc_n": "minecraft · {n} playing",
@@ -239,11 +239,11 @@ def frame(cols: int, lines: int) -> list[str]:
         disk = next((x for x in st.get("disks") or [] if x.get("mount") == "/"), None)
         df = disk["used"] / max(1, disk["total"]) if disk else None
         cells = [
-            (f"{round(cpu)}%", T["cpu"], level(cpu / 100)),
+            (f"{round(cpu)}", T["cpu"], level(cpu / 100)),
             (f"{round(temp)}" if temp is not None else "-", T["temp"],
              BAD if (temp or 0) >= 85 else WARN if (temp or 0) >= 70 else ACC),
-            (f"{round(mu / mt * 100)}%", T["ram"], level(mu / mt)),
-            (f"{round(df * 100)}%" if df is not None else "-", T["disk"], level(df or 0)),
+            (f"{round(mu / mt * 100)}", T["ram"], level(mu / mt)),
+            (f"{round(df * 100)}" if df is not None else "-", T["disk"], level(df or 0)),
         ]
         cw = min(28, (cols - 2) // 4)
         x0 = (cols - cw * 4) // 2
@@ -290,7 +290,7 @@ def frame(cols: int, lines: int) -> list[str]:
     g.row(top + 16, conn)
 
     if fresh:
-        g.put(m, lines - 2, T["up"].format(t=uptime(st.get("uptime") or 0)), DIM)
+        g.row(top + 18, [(T["up"].format(t=uptime(st.get("uptime") or 0)), DIM)])
     return g.render()
 
 
