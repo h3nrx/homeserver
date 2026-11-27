@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.7.14
+
+Laptop screen in a new look.
+
+- Rebuilt in the style of a Linux system info screen: the server name in big block letters, below it time and date on the left and the values on the right.
+- New soft pastel colours on a dark background.
+- Only what's useful: uptime, CPU with temperature, RAM, disk, services, Minecraft, updates and network.
+- "Services" shows at a glance whether everything runs, or if the website is down or a Discord bot crashed.
+- "Updates" shows how many Ubuntu updates are ready, how many are for security, and whether a restart is needed.
+
 ## 1.7.13
 
 Everything in English.
