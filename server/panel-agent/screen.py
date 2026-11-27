@@ -3,8 +3,8 @@
 
 Started by homeserver-screen.service, switched on and off in the admin
 (System). Only reads: the agent's stats, the public status of the site, the
-Discord bot units and the Ubuntu update state. Draws a quiet page in the style
-of neofetch, refreshed every 2 seconds.
+Discord bot units and the Ubuntu update state. Draws a calm page: four big
+numbers, a line of status dots and the connection, refreshed every 2 seconds.
 """
 import json
 import os
@@ -19,67 +19,48 @@ import urllib.request
 from pathlib import Path
 
 BRAND = "__BRAND__"
-OWNER = "__USER__"
 STATS = Path("/var/lib/panel/stats.json")
 SYS = Path("/var/lib/panel/sysupdate.json")
 PREFS = Path("__HOME__/files/.panel/prefs.json")   # the language picked in the admin
 UBUNTU = Path("/var/lib/update-notifier/updates-available")
 
-# The Linux console has 16 colours that can be redefined: a soft pastel set on
-# a dark violet-grey, the same tone for normal and bold so nothing gets louder.
-PALETTE = {0: "1e1e2e", 1: "f38ba8", 2: "a6e3a1", 3: "f9e2af", 4: "89b4fa", 5: "cba6f7", 6: "94e2d5", 7: "a6adc8",
-           8: "585b70", 15: "cdd6f4"}
+# The Linux console has 16 colours that can be redefined: near-black, one soft
+# lilac accent, greys, and green / amber / red only where something has a state.
+PALETTE = {0: "0f0f11", 1: "f08080", 2: "86d39a", 3: "f0c36b", 4: "89b4fa", 5: "c4b5fd", 6: "7dd3c0", 7: "a6a6ab",
+           8: "6b6b70", 15: "e8e8e6"}
 SET_PALETTE = "".join(f"\033]P{n:x}{c}" for n, c in PALETTE.items()) + \
     "".join(f"\033]P{n + 8:x}{PALETTE[n]}" for n in range(1, 7))
-W, G, D, R = "\033[97m", "\033[37m", "\033[90m", "\033[0m"   # text, soft, dim, reset
-RED, GREEN, AMBER, BLUE, LILAC, TEAL = (f"\033[3{n}m" for n in range(1, 7))
-BOLD = "\033[1m"
+FG, DIM, ACC, OK, WARN, BAD = "97", "90", "35", "32", "33", "31"   # colour codes for the grid
 
-# 5-row block letters for the name; every pixel is one character
+# 3x5 digits for the big numbers; every pixel becomes two characters
 GLYPHS = {
-    "A": [" ### ", "#   #", "#####", "#   #", "#   #"], "B": ["#### ", "#   #", "#### ", "#   #", "#### "],
-    "C": [" ####", "#    ", "#    ", "#    ", " ####"], "D": ["#### ", "#   #", "#   #", "#   #", "#### "],
-    "E": ["#####", "#    ", "#### ", "#    ", "#####"], "F": ["#####", "#    ", "#### ", "#    ", "#    "],
-    "G": [" ####", "#    ", "#  ##", "#   #", " ####"], "H": ["#   #", "#   #", "#####", "#   #", "#   #"],
-    "I": ["###", " # ", " # ", " # ", "###"], "J": ["  ###", "   # ", "   # ", "#  # ", " ##  "],
-    "K": ["#   #", "#  # ", "###  ", "#  # ", "#   #"], "L": ["#    ", "#    ", "#    ", "#    ", "#####"],
-    "M": ["#   #", "## ##", "# # #", "#   #", "#   #"], "N": ["#   #", "##  #", "# # #", "#  ##", "#   #"],
-    "O": [" ### ", "#   #", "#   #", "#   #", " ### "], "P": ["#### ", "#   #", "#### ", "#    ", "#    "],
-    "Q": [" ### ", "#   #", "# # #", "#  # ", " ## #"], "R": ["#### ", "#   #", "#### ", "#  # ", "#   #"],
-    "S": [" ####", "#    ", " ### ", "    #", "#### "], "T": ["#####", "  #  ", "  #  ", "  #  ", "  #  "],
-    "U": ["#   #", "#   #", "#   #", "#   #", " ### "], "V": ["#   #", "#   #", "#   #", " # # ", "  #  "],
-    "W": ["#   #", "#   #", "# # #", "## ##", "#   #"], "X": ["#   #", " # # ", "  #  ", " # # ", "#   #"],
-    "Y": ["#   #", " # # ", "  #  ", "  #  ", "  #  "], "Z": ["#####", "   # ", "  #  ", " #   ", "#####"],
-    "0": [" ### ", "#  ##", "# # #", "##  #", " ### "], "1": ["  #  ", " ##  ", "  #  ", "  #  ", " ### "],
-    "2": ["#### ", "    #", " ### ", "#    ", "#####"], "3": ["#### ", "    #", " ### ", "    #", "#### "],
-    "4": ["#   #", "#   #", "#####", "    #", "    #"], "5": ["#####", "#    ", "#### ", "    #", "#### "],
-    "6": [" ### ", "#    ", "#### ", "#   #", " ### "], "7": ["#####", "    #", "   # ", "  #  ", "  #  "],
-    "8": [" ### ", "#   #", " ### ", "#   #", " ### "], "9": [" ### ", "#   #", " ####", "    #", " ### "],
-    ".": ["  ", "  ", "  ", "  ", "##"], "-": ["    ", "    ", "####", "    ", "    "],
-    "_": ["     ", "     ", "     ", "     ", "#####"], " ": ["   "] * 5,
+    "0": ["###", "# #", "# #", "# #", "###"], "1": [" # ", "## ", " # ", " # ", "###"], "2": ["###", "  #", "###", "#  ", "###"],
+    "3": ["###", "  #", " ##", "  #", "###"], "4": ["# #", "# #", "###", "  #", "  #"], "5": ["###", "#  ", "###", "  #", "###"],
+    "6": ["###", "#  ", "###", "# #", "###"], "7": ["###", "  #", "  #", "  #", "  #"], "8": ["###", "# #", "###", "# #", "###"],
+    "9": ["###", "# #", "###", "  #", "###"], "%": ["##  #", "## # ", "  #  ", " # ##", "#  ##"], "-": ["   ", "   ", "###", "   ", "   "],
 }
 TEXT = {
     "de": {
         "days": ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"],
         "months": ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"],
-        "date": "{d}. {month}", "dec": ",", "dh": "{d} Tage, {h} Std", "d1": "1 Tag, {h} Std", "hm": "{h} Std {m} Min",
-        "k_up": "an seit", "k_cpu": "cpu", "k_ram": "ram", "k_disk": "speicher", "k_svc": "dienste", "k_mc": "minecraft",
-        "k_upd": "updates", "k_net": "netz",
-        "loading": "Werte werden geladen…", "online": "online", "nobody": "niemand spielt", "one": "1 spielt", "many": "{n} spielen",
-        "off": "aus", "all_ok": "alles läuft", "bots": "{n} Bots", "bot1": "1 Bot", "crash1": "1 Bot abgestürzt", "crash": "{n} Bots abgestürzt",
-        "web_down": "Website nicht erreichbar", "updating": "wird aktualisiert…", "reboot": "Neustart nötig",
-        "current": "aktuell", "ready": "{n} bereit", "sec": "{n} Sicherheit", "nonet": "kein Netz",
+        "date": "{day}, {d}. {month}", "dh": "{d} Tagen, {h} Std", "d1": "1 Tag, {h} Std", "hm": "{h} Std {m} Min", "up": "an seit {t}",
+        "cpu": "cpu", "temp": "°C", "ram": "ram", "disk": "speicher", "loading": "Werte werden geladen…",
+        "web": "website", "web_down": "website nicht erreichbar", "bot1": "1 Bot", "bots": "{n} Bots",
+        "crash1": "1 Bot abgestürzt", "crash": "{n} Bots abgestürzt",
+        "mc_off": "minecraft aus", "mc_0": "minecraft · niemand spielt", "mc_1": "minecraft · 1 spielt", "mc_n": "minecraft · {n} spielen",
+        "updating": "wird aktualisiert…", "reboot": "Neustart nötig", "current": "ubuntu aktuell",
+        "upd1": "1 Ubuntu-Update", "upd": "{n} Ubuntu-Updates", "sec": "{n} Sicherheit", "nonet": "kein Netz",
     },
     "en": {
         "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
         "months": ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
-        "date": "{d} {month}", "dec": ".", "dh": "{d} days, {h} h", "d1": "1 day, {h} h", "hm": "{h} h {m} min",
-        "k_up": "uptime", "k_cpu": "cpu", "k_ram": "ram", "k_disk": "disk", "k_svc": "services", "k_mc": "minecraft",
-        "k_upd": "updates", "k_net": "network",
-        "loading": "Loading…", "online": "online", "nobody": "nobody playing", "one": "1 playing", "many": "{n} playing",
-        "off": "off", "all_ok": "all running", "bots": "{n} bots", "bot1": "1 bot", "crash1": "1 bot crashed", "crash": "{n} bots crashed",
-        "web_down": "website not reachable", "updating": "updating…", "reboot": "restart needed",
-        "current": "up to date", "ready": "{n} ready", "sec": "{n} security", "nonet": "no network",
+        "date": "{day}, {d} {month}", "dh": "{d} days, {h} h", "d1": "1 day, {h} h", "hm": "{h} h {m} min", "up": "up {t}",
+        "cpu": "cpu", "temp": "°C", "ram": "ram", "disk": "disk", "loading": "Loading…",
+        "web": "website", "web_down": "website not reachable", "bot1": "1 bot", "bots": "{n} bots",
+        "crash1": "1 bot crashed", "crash": "{n} bots crashed",
+        "mc_off": "minecraft off", "mc_0": "minecraft · nobody playing", "mc_1": "minecraft · 1 playing", "mc_n": "minecraft · {n} playing",
+        "updating": "updating…", "reboot": "restart needed", "current": "ubuntu up to date",
+        "upd1": "1 Ubuntu update", "upd": "{n} Ubuntu updates", "sec": "{n} security", "nonet": "no network",
     },
 }
 T = TEXT["de"]
@@ -93,38 +74,61 @@ def language() -> dict:
     return TEXT.get(lang) or TEXT["de" if os.environ.get("LANG", "").startswith("de") else "en"]
 
 
-def logo(text: str) -> list[str]:
-    rows = [[] for _ in range(5)]
-    for c in text.upper():
-        g = GLYPHS.get(c, GLYPHS[" "])
-        for y in range(5):
-            rows[y].append(g[y].replace("#", "█"))
-    return [" ".join(r).rstrip() for r in rows]
+class Grid:
+    """The screen as characters with a colour each; turned into lines at the end."""
+
+    def __init__(self, cols: int, lines: int):
+        self.cols, self.lines = cols, lines
+        self.cells = [[(" ", FG)] * cols for _ in range(lines)]
+
+    def put(self, x: int, y: int, text: str, colour: str = FG) -> int:
+        if 0 <= y < self.lines:
+            for i, ch in enumerate(text):
+                if 0 <= x + i < self.cols:
+                    self.cells[y][x + i] = (ch, colour)
+        return x + len(text)
+
+    def row(self, y: int, parts: list[tuple[str, str]], x: int | None = None) -> None:
+        """Several coloured pieces in one line, centred unless x is given."""
+        width = sum(len(t) for t, _ in parts)
+        x = (self.cols - width) // 2 if x is None else x
+        for text, colour in parts:
+            x = self.put(x, y, text, colour)
+
+    def big(self, x: int, y: int, text: str, colour: str) -> None:
+        for ch in text:
+            g = GLYPHS.get(ch, GLYPHS["-"])
+            for r in range(5):
+                for i, p in enumerate(g[r]):
+                    if p == "#":
+                        self.put(x + i * 2, y + r, "██", colour)
+            x += len(g[0]) * 2 + 2
+
+    def render(self) -> list[str]:
+        out = []
+        for cells in self.cells:
+            line, cur = "", None
+            for ch, colour in cells:
+                if colour != cur and ch != " ":
+                    line += f"\033[{colour}m"
+                    cur = colour
+                line += ch
+            out.append(line.rstrip() + "\033[0m")
+        return out
 
 
-def vis(s: str) -> int:                 # visible length, without colour codes
-    out, skip = 0, False
-    for ch in s:
-        if ch == "\033":
-            skip = True
-        elif skip:
-            skip = ch != "m"
-        else:
-            out += 1
-    return out
+def big_width(text: str) -> int:
+    return sum(len(GLYPHS.get(c, GLYPHS["-"])[0]) * 2 + 2 for c in text) - 2
 
 
-def level(frac: float, normal: str) -> str:
-    return RED if frac >= 0.92 else AMBER if frac >= 0.8 else normal
-
-
-def gb(b: float) -> str:
-    return f"{b / 1024 ** 3:.1f}".replace(".", T["dec"])
+def level(frac: float) -> str:
+    return BAD if frac >= 0.92 else WARN if frac >= 0.8 else ACC
 
 
 def rate(b: float) -> str:
     if b >= 1024 ** 2:
-        return f"{b / 1024 ** 2:.1f} MB/s".replace(".", T["dec"])
+        s = f"{b / 1024 ** 2:.1f} MB/s"
+        return s.replace(".", ",") if T is TEXT["de"] else s
     return f"{round(b / 1024)} kB/s"
 
 
@@ -175,7 +179,7 @@ def ubuntu_waiting() -> tuple[int, int] | None:
     return (int(n[1]) if n else 0, int(s[1]) if s else 0)
 
 
-def address() -> tuple[str, str]:
+def address() -> tuple[str, list[tuple[str, str]]]:
     """Local address and how the laptop is connected."""
     ip = ""
     try:
@@ -184,7 +188,7 @@ def address() -> tuple[str, str]:
             ip = s.getsockname()[0]
     except OSError:
         pass
-    link = f"{RED}{T['nonet']}{R}"
+    link = [(T["nonet"], BAD)]
     for dev in sorted(os.listdir("/sys/class/net")):
         try:
             up = Path(f"/sys/class/net/{dev}/operstate").read_text().strip() == "up"
@@ -201,8 +205,8 @@ def address() -> tuple[str, str]:
             except (OSError, ValueError, IndexError):
                 pass
             n = 4 if q >= 55 else 3 if q >= 40 else 2 if q >= 25 else 1
-            return ip, f"{W}WLAN {LILAC}{'▮' * n}{D}{'▮' * (4 - n)}{R}"
-        link = f"{W}LAN{R}"
+            return ip, [("WLAN ", DIM), ("▮" * n, ACC), ("▮" * (4 - n), DIM)]
+        link = [("LAN", DIM)]
     return ip, link
 
 
@@ -215,71 +219,79 @@ def frame(cols: int, lines: int) -> list[str]:
     global T
     T = language()
     st, pub, su = read_json(STATS), public(), read_json(SYS)
+    fresh = bool(st) and time.time() * 1000 - st.get("ts", 0) < 30000
     now = time.localtime()
-    fresh = st and time.time() * 1000 - st.get("ts", 0) < 30000
-    dot = f" {D}·{R} "
+    g = Grid(cols, lines)
+    m = 6 if cols >= 80 else 1
 
-    rows = []                                   # (key, value) on the right
+    # top: name on the left, time and date on the right
+    g.put(m, 2, BRAND, ACC)
+    clock = time.strftime("%H:%M", now)
+    date = T["date"].format(day=T["days"][now.tm_wday], d=now.tm_mday, month=T["months"][now.tm_mon - 1])
+    g.put(cols - m - len(clock), 2, clock, FG)
+    g.put(cols - m - len(date), 3, date, DIM)
+
+    top = max(6, (lines - 17) // 2 + 1)
     if fresh:
         cpu = (st.get("cpu") or {}).get("total") or 0
         temp = st.get("temp_c")
-        tc = RED if (temp or 0) >= 85 else AMBER if (temp or 0) >= 70 else GREEN
         mt, mu = st.get("mem_total") or 1, st.get("mem_used") or 0
         disk = next((x for x in st.get("disks") or [] if x.get("mount") == "/"), None)
-        rows.append((T["k_up"], f"{W}{uptime(st.get('uptime') or 0)}"))
-        rows.append((T["k_cpu"], f"{level(cpu / 100, GREEN)}{round(cpu)} %" + (f"{dot}{tc}{round(temp)} °C" if temp is not None else "")))
-        rows.append((T["k_ram"], f"{level(mu / mt, BLUE)}{gb(mu)} / {gb(mt)} GB"))
-        if disk:
-            f = disk["used"] / max(1, disk["total"])
-            rows.append((T["k_disk"], f"{level(f, W)}{round(disk['used'] / 1024 ** 3)} / {round(disk['total'] / 1024 ** 3)} GB"))
+        df = disk["used"] / max(1, disk["total"]) if disk else None
+        cells = [
+            (f"{round(cpu)}%", T["cpu"], level(cpu / 100)),
+            (f"{round(temp)}" if temp is not None else "-", T["temp"],
+             BAD if (temp or 0) >= 85 else WARN if (temp or 0) >= 70 else ACC),
+            (f"{round(mu / mt * 100)}%", T["ram"], level(mu / mt)),
+            (f"{round(df * 100)}%" if df is not None else "-", T["disk"], level(df or 0)),
+        ]
+        cw = min(28, (cols - 2) // 4)
+        x0 = (cols - cw * 4) // 2
+        for i, (num, label, colour) in enumerate(cells):
+            g.big(x0 + i * cw + (cw - big_width(num)) // 2, top, num, colour)
+            g.put(x0 + i * cw + (cw - len(label)) // 2, top + 7, label, DIM)
     else:
-        rows.append(("", f"{G}{T['loading']}"))
+        g.row(top + 3, [(T["loading"], DIM)])
 
+    # one line of status dots: only what can go wrong or what's going on
+    dots = [(OK, T["web"]) if pub else (BAD, T["web_down"])]
     run, crashed = bots()
-    if not pub:
-        svc = f"{RED}{T['web_down']}"
-    elif crashed:
-        svc = f"{AMBER}{T['crash1'] if crashed == 1 else T['crash'].format(n=crashed)}"
-    else:
-        svc = f"{GREEN}{T['all_ok']}" + (f"{dot}{W}{T['bot1'] if run == 1 else T['bots'].format(n=run)}" if run else "")
-    rows.append((T["k_svc"], svc))
-
+    if crashed:
+        dots.append((BAD, T["crash1"] if crashed == 1 else T["crash"].format(n=crashed)))
+    elif run:
+        dots.append((OK, T["bot1"] if run == 1 else T["bots"].format(n=run)))
     mc = (pub or {}).get("mc") or {}
     n = int(mc.get("online") or 0)
-    rows.append((T["k_mc"], f"{GREEN}{T['online']}{dot}{W}" + (T["nobody"] if not n else T["one"] if n == 1 else T["many"].format(n=n))
-                 if mc.get("active") else f"{D}{T['off']}"))
-
+    if mc.get("active"):
+        dots.append((OK, T["mc_0"] if not n else T["mc_1"] if n == 1 else T["mc_n"].format(n=n)))
+    else:
+        dots.append((DIM, T["mc_off"]))
     waiting = ubuntu_waiting()
     if su.get("state") in ("starting", "running"):
-        rows.append((T["k_upd"], f"{BLUE}{T['updating']}"))
+        dots.append((ACC, T["updating"]))
     elif Path("/var/run/reboot-required").exists():
-        rows.append((T["k_upd"], f"{AMBER}{T['reboot']}"))
+        dots.append((WARN, T["reboot"]))
     elif waiting and waiting[0]:
-        rows.append((T["k_upd"], f"{AMBER}{T['ready'].format(n=waiting[0])}" + (f"{dot}{RED}{T['sec'].format(n=waiting[1])}" if waiting[1] else "")))
+        dots.append((WARN, (T["upd1"] if waiting[0] == 1 else T["upd"].format(n=waiting[0]))
+                     + (f" · {T['sec'].format(n=waiting[1])}" if waiting[1] else "")))
     elif waiting is not None:
-        rows.append((T["k_upd"], f"{GREEN}{T['current']}"))
+        dots.append((OK, T["current"]))
+    parts = []
+    for i, (colour, label) in enumerate(dots):
+        parts += ([("      ", FG)] if i else []) + [("● ", colour), (label, DIM if colour == DIM else FG)]
+    g.row(top + 13, parts)
 
+    # connection, quiet
     ip, link = address()
-    net = (st or {}).get("net") or {}
-    traffic = f"{dot}{TEAL}↓ {W}{rate(net.get('rx_rate') or 0)}  {LILAC}↑ {W}{rate(net.get('tx_rate') or 0)}" if fresh else ""
-    rows.append((T["k_net"], f"{link}{dot}{W}{ip or '–'}{traffic}"))
+    net = st.get("net") or {}
+    conn = link + [("  ·  ", DIM), (ip or "–", DIM)]
+    if fresh:
+        conn += [("  ·  ↓ ", DIM), (rate(net.get("rx_rate") or 0), DIM), ("  ↑ ", DIM), (rate(net.get("tx_rate") or 0), DIM)]
+    g.row(top + 16, conn)
 
-    # left column: time and date, next to the first rows
-    left = ["", f"{BOLD}{LILAC}{time.strftime('%H:%M', now)}", "", f"{G}{T['days'][now.tm_wday]}",
-            f"{G}{T['date'].format(d=now.tm_mday, month=T['months'][now.tm_mon - 1])}"]
-    lw, kw = 22, 12
-    who = f"{LILAC}{OWNER}{D}@{BLUE}{BRAND}"
-    body = [(left[0], who), (left[1], f"{D}{'─' * vis(who)}")]
-    for i, (k, v) in enumerate(rows):
-        body.append((left[i + 2] if i + 2 < len(left) else "", f"{LILAC}{k:<{kw}}{R}{v}" if k else v))
-    text = [f"{l}{R}" + " " * max(1, lw - vis(l)) + f"{v}{R}" for l, v in body]
-
-    art = logo(BRAND)
-    out = ([f"{LILAC}{r}{R}" for r in art] + [""] if max(map(len, art)) <= cols - 4 else [f"{BOLD}{LILAC}{BRAND}{R}", ""]) + text
-    width = max(vis(x) for x in out)
-    pad = " " * max(0, (cols - width) // 2)
-    top = max(0, (lines - len(out)) // 2)
-    return [""] * top + [pad + x for x in out]
+    if fresh:
+        g.put(m, lines - 2, T["up"].format(t=uptime(st.get("uptime") or 0)), DIM)
+    return g.render()
 
 
 def main() -> None:

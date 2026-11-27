@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.15
+
+Calmer laptop screen.
+
+- Four big numbers in the middle: CPU, temperature, RAM and disk. They turn yellow or red when things get tight.
+- Below them one line of status dots: website, Discord bots, Minecraft and Ubuntu updates. Green means fine, yellow or red means something needs a look.
+- The connection, name, time, date and uptime sit small and grey at the edges.
+- One soft lilac accent on near-black instead of many colours.
+
 ## 1.7.14
 
 Laptop screen in a new look.
