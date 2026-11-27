@@ -112,7 +112,7 @@ class Grid:
             line, cur = "", None
             for ch, colour in cells:
                 if colour != cur and ch != " ":
-                    line += f"\033[{colour}m"
+                    line += f"\033[0;{colour}m"
                     cur = colour
                 line += ch
             out.append(line.rstrip() + "\033[0m")
@@ -296,69 +296,91 @@ def frame(cols: int, lines: int) -> list[str]:
     return g.render()
 
 
-# The cat at the bottom: 3 rows of plain characters, facing right; mirrored for left.
-CAT_WALK = [
-    ["      /\\_/\\ ", " \\___/ o.o )", "  /_/   /_/ "],
-    ["      /\\_/\\ ", " /___/ o.o )", "   \\_\\   \\_\\"],
-]
-CAT_SIT = ["      /\\_/\\ ", "  ,__/ o.o )", " (___(_)(_) "]
-MIRROR = str.maketrans("/\\()<>,", "\\/)(><,")
-CAT_W = 13
+# The cat at the bottom, drawn as a little pixel cat facing right (mirrored for left).
+# █ body, ▲ ears, ▮ legs, e the eye, t the tail (up or down, it swishes).
+CAT = {
+    "walk0": ["      ▲ ▲", "t██████e█", " ▮ ▮  ▮ ▮"],
+    "walk1": ["      ▲ ▲", "t██████e█", "  ▮    ▮ "],
+    "walk2": ["      ▲ ▲", "t██████e█", " ▮▮   ▮▮ "],
+    "sit":   ["      ▲ ▲", "    ███e█", "  t█████▮"],
+    "sleep": ["         ", "      ▲ ▲", "t██████e█"],
+}
+CAT_W = 9
 STRIP = 5          # rows: room for a hop, 3 rows of cat, the ground
-
-
-def mirror(rows: list[str]) -> list[str]:
-    return [r.ljust(CAT_W)[::-1].translate(MIRROR) for r in rows]
+BODY, EYE = "37", "30;47"
 
 
 class Cat:
-    """Walks, now and then hops, sits down for a while, blinks and turns around."""
+    """Walks with moving legs, hops now and then, sits and blinks, sometimes naps. The tail swishes."""
 
     def __init__(self):
         self.x, self.dir, self.state, self.t, self.tick, self.blink = 10.0, 1, "walk", 0, 0, 0
 
     def step(self, lo: int, hi: int) -> None:
         self.tick += 1
+        self.t -= 1
         r = random.random()
-        if self.state == "sit":
-            self.t -= 1
-            self.blink = max(0, self.blink - 1) if self.blink else (2 if random.random() < 0.03 else 0)
+        if self.state in ("sit", "sleep"):
+            if self.state == "sit":
+                self.blink = self.blink - 1 if self.blink else (2 if r < 0.03 else 0)
             if self.t <= 0:
                 self.state, self.blink = "walk", 0
                 if random.random() < 0.5:
                     self.dir = -self.dir
             return
         if self.state == "hop":
-            self.t -= 1
-            self.x += self.dir * 1.5
+            self.x += self.dir * 1.0
             if self.t <= 0:
                 self.state = "walk"
         else:
-            self.x += self.dir * 0.75
-            if r < 0.006:
-                self.state, self.t = "sit", random.randint(25, 80)
-            elif r < 0.018:
-                self.state, self.t = "hop", 5
-            elif r < 0.023:
+            self.x += self.dir * 0.5
+            if r < 0.005:
+                self.state, self.t = "sit", random.randint(30, 90)
+            elif r < 0.0065:
+                self.state, self.t = "sleep", random.randint(100, 250)
+            elif r < 0.015:
+                self.state, self.t = "hop", 4
+            elif r < 0.019:
                 self.dir = -self.dir
         if self.x <= lo:
             self.x, self.dir = lo, 1
         elif self.x >= hi - CAT_W:
             self.x, self.dir = hi - CAT_W, -1
 
+    def sprite(self) -> list[str]:
+        if self.state == "walk":
+            rows = CAT[("walk0", "walk1", "walk2", "walk1")[int(self.x * 2) % 4]]   # legs follow the ground, no sliding
+        elif self.state == "hop":
+            rows = CAT["walk2"] if self.t > 1 else CAT["walk0"]
+        else:
+            rows = CAT[self.state]
+        tail_up = (self.tick // 6) % 2 if self.state != "sleep" else 0
+        out = []
+        for i, line in enumerate(rows):
+            if "t" in line:
+                if tail_up and i > 0:     # the tail flicks up into the row above
+                    out[i - 1] = out[i - 1][:line.index("t")] + "▮" + out[i - 1][line.index("t") + 1:]
+                    line = line.replace("t", " ")
+                else:
+                    line = line.replace("t", "━")
+            out.append(line.ljust(CAT_W))
+        return out if self.dir > 0 else [x[::-1] for x in out]
+
     def draw(self, cols: int, lo: int, hi: int) -> list[str]:
         g = Grid(cols, STRIP)
         g.put(lo, STRIP - 1, "─" * (hi - lo), DIM)
-        if self.state == "sit":
-            rows = [x.replace("o.o", "-.-") for x in CAT_SIT] if self.blink else CAT_SIT
-        else:
-            rows = CAT_WALK[0 if self.state == "hop" else (self.tick // 2) % 2]
-        rows = rows if self.dir > 0 else mirror(rows)
-        y = 0 if self.state == "hop" and 1 <= self.t <= 4 else 1
-        for i, line in enumerate(rows):
+        y = 0 if self.state == "hop" and 1 <= self.t <= 3 else 1
+        eye = "━" if self.state == "sleep" or self.blink else "•"
+        for i, line in enumerate(self.sprite()):
             for j, ch in enumerate(line):
-                if ch != " ":
-                    g.put(int(self.x) + j, y + i, ch, "37")
+                if ch == "e":
+                    g.put(int(self.x) + j, y + i, eye, EYE)
+                elif ch != " ":
+                    g.put(int(self.x) + j, y + i, ch, BODY)
+        if self.state == "sleep":
+            z = "z" if (self.tick // 8) % 2 else "Z"
+            zx = int(self.x) + (CAT_W - 1 if self.dir > 0 else 0) + (1 if self.dir > 0 else -1)
+            g.put(zx, (self.tick // 8) % 2, z, DIM)
         return g.render()
 
 

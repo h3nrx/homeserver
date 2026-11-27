@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.7.18
+
+Smaller, livelier cat.
+
+- The cat on the laptop screen is now a small pixel cat: body, little ears, legs and one eye.
+- The legs move with the steps, so it no longer slides across the ground. The tail swishes up and down.
+- It hops now and then, sits down and blinks, and sometimes takes a nap with a little "z".
+
 ## 1.7.17
 
 A cat on the laptop screen.
