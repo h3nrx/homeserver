@@ -592,7 +592,16 @@ def github_latest(key: str) -> tuple[int, dict | None]:
         return e.code, None
     except (OSError, ValueError):
         return 0, None
-    return 200, {k: d.get(k) for k in ("tag_name", "name", "body", "published_at", "html_url")}
+    rel = {k: d.get(k) for k in ("tag_name", "name", "body", "published_at", "html_url")}
+    # the releases before it too, so a server that skipped some sees everything that's new at once
+    req = urllib.request.Request(f"https://api.github.com/repos/{UPDATE_REPO}/releases?per_page=40", headers=headers)
+    try:
+        with urllib.request.build_opener(NoRedirect).open(req, timeout=12) as r:
+            rel["history"] = [{k: x.get(k) for k in ("tag_name", "name", "body")}
+                              for x in json.loads(r.read(4_000_000)) if isinstance(x, dict) and not x.get("draft")]
+    except (OSError, ValueError):
+        rel["history"] = []
+    return 200, rel
 
 
 def update_release(p) -> dict:

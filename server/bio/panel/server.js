@@ -1293,7 +1293,99 @@ async function keyUpload(req, res, url) {
   res.end(`${name} ✓`);
 }
 
+/* a whole folder (with its subfolders) as one ZIP, packed while it downloads */
+// Files are stored as they are (no compression: photos and videos don't shrink anyway),
+// so the size is known up front and nothing is written to the disk.
+const ZIP_MAX = 4 * GB - 64 * 1024 * 1024;     // plain ZIP (no ZIP64): under 4 GB in total
+const CRC_TABLE = (() => { const t = new Int32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c; } return t; })();
+const crc32 = zlib.crc32 || ((buf, c = 0) => { c = ~c; for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8); return ~c >>> 0; });
+function dosTime(ms) {
+  const d = new Date(ms || Date.now());
+  return { time: (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1),
+    date: (Math.max(0, d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate() };
+}
+async function zipFolder(req, res, folderId, check) {
+  const plan = await withIndex((idx, _s, folders) => {
+    const all = allFolders(folders);
+    if (!all[folderId]) fail(404, "Folder not found.");
+    const out = [], used = new Set();
+    const walk = (fid, prefix, depth) => {
+      if (depth > 20) return;
+      const unique = (name) => {
+        let n = name, i = 2;
+        const dot = name.lastIndexOf(".");
+        while (used.has((prefix + n).toLowerCase())) n = dot > 0 ? `${name.slice(0, dot)} (${i++})${name.slice(dot)}` : `${name} (${i++})`;
+        used.add((prefix + n).toLowerCase());
+        return prefix + n;
+      };
+      for (const [id, e] of Object.entries(idx)) if ((e.folder && all[e.folder] ? e.folder : null) === fid) out.push({ id, diskName: path.basename(String(e.name)), name: unique(e.name), size: e.size || 0, t: e.uploaded });
+      for (const [id, f] of Object.entries(all)) if ((f.parent || null) === fid && id !== fid) walk(id, unique(String(f.name).replace(/[\\/]/g, "_")) + "/", depth + 1);
+    };
+    walk(folderId, "", 0);
+    return { name: all[folderId].name, files: out };
+  });
+  if (!plan.files.length) fail(400, "This folder is empty.");
+  if (plan.files.length > 65000) fail(400, "Too many files for one ZIP.");
+  // real sizes from the disk, so the length we announce is exact
+  for (const f of plan.files) {
+    const st = await fsp.stat(path.join(FILES_DIR, f.id, f.diskName)).catch(() => null);
+    f.size = st && st.isFile() ? st.size : -1;
+  }
+  const files = plan.files.filter((f) => f.size >= 0);
+  const total = files.reduce((s, f) => s + f.size, 0);
+  if (total > ZIP_MAX) fail(413, "This folder is bigger than 4 GB. Download it in smaller parts.");
+  for (const f of files) f.nb = Buffer.from(f.name, "utf8");
+  const length = files.reduce((s, f) => s + 30 + f.nb.length + f.size + 16 + 46 + f.nb.length, 0) + 22;
+  if (check) return send(res, 200, { ok: true, files: files.length, size: length });
+  const zipName = `${cleanFileName(plan.name, "folder")}.zip`;
+  res.writeHead(200, {
+    "Content-Type": "application/zip", "Content-Length": length, "Cache-Control": "no-store", "X-Accel-Buffering": "no",
+    "Content-Disposition": `attachment; filename="${zipName.replace(/[^\x20-\x7e]|"/g, "_")}"; filename*=UTF-8''${encodeURIComponent(zipName)}`,
+  });
+  if (req.method === "HEAD") return res.end();
+  const put = (buf) => (res.write(buf) ? null : new Promise((ok) => res.once("drain", ok)));
+  let offset = 0;
+  const central = [];
+  for (const f of files) {
+    const { time, date } = dosTime(f.t);
+    const h = Buffer.alloc(30);
+    h.writeUInt32LE(0x04034b50, 0); h.writeUInt16LE(20, 4); h.writeUInt16LE(0x0808, 6); h.writeUInt16LE(0, 8);
+    h.writeUInt16LE(time, 10); h.writeUInt16LE(date, 12); h.writeUInt16LE(f.nb.length, 26);
+    await put(h); await put(f.nb);
+    let crc = 0, n = 0;
+    const src = fs.createReadStream(path.join(FILES_DIR, f.id, f.diskName));
+    for await (const chunk of src) {
+      const part = n + chunk.length > f.size ? chunk.subarray(0, f.size - n) : chunk;   // never more than announced
+      crc = crc32(part, crc);
+      n += part.length;
+      await put(part);
+      if (n >= f.size) { src.destroy(); break; }
+    }
+    if (n < f.size) { res.destroy(); return; }      // the file shrank meanwhile: better a broken download than a wrong file
+    const dd = Buffer.alloc(16);
+    dd.writeUInt32LE(0x08074b50, 0); dd.writeUInt32LE(crc >>> 0, 4); dd.writeUInt32LE(f.size, 8); dd.writeUInt32LE(f.size, 12);
+    await put(dd);
+    const c = Buffer.alloc(46);
+    c.writeUInt32LE(0x02014b50, 0); c.writeUInt16LE(20, 4); c.writeUInt16LE(20, 6); c.writeUInt16LE(0x0808, 8); c.writeUInt16LE(0, 10);
+    c.writeUInt16LE(time, 12); c.writeUInt16LE(date, 14); c.writeUInt32LE(crc >>> 0, 16); c.writeUInt32LE(f.size, 20); c.writeUInt32LE(f.size, 24);
+    c.writeUInt16LE(f.nb.length, 28); c.writeUInt32LE(offset, 42);
+    central.push(c, f.nb);
+    offset += 30 + f.nb.length + f.size + 16;
+  }
+  const cd = Buffer.concat(central);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(files.length, 8); end.writeUInt16LE(files.length, 10);
+  end.writeUInt32LE(cd.length, 12); end.writeUInt32LE(offset, 16);
+  await put(cd); await put(end);
+  res.end();
+}
+
 async function fileRoutes(req, res, p, m, url) {
+  if (p === "/api/files/zip" && (m === "GET" || m === "HEAD")) {
+    const folder = url.searchParams.get("folder") || "";
+    if (!FOLDER_ID.test(folder)) fail(400, "Invalid folder.");
+    return zipFolder(req, res, folder, url.searchParams.get("check") === "1");
+  }
   if (p === "/api/files" && m === "GET") {
     await importJobs();
     await fixExtensions().catch(() => {});
@@ -2508,6 +2600,9 @@ async function fetchRelease() {
     notes: String(j.body || "").slice(0, 20000),
     published: j.published_at || null,
     url: typeof j.html_url === "string" && j.html_url.startsWith("https://github.com/") ? j.html_url : null,
+    // earlier releases, so a server that skipped some sees all their notes together
+    history: (Array.isArray(j.history) ? j.history : []).filter((r) => r && TAG_RE.test(r.tag_name || "")).slice(0, 40)
+      .map((r) => ({ tag: r.tag_name, name: String(r.name || r.tag_name).slice(0, 120), notes: String(r.body || "").slice(0, 8000) })),
   };
 }
 async function latestRelease(force) {
@@ -2825,9 +2920,12 @@ async function trainingSummary() {
 /* ============================ Grade calculator ============================ */
 // Thuringian upper school: points 1-15 per grade. In a subject the normal grades
 // count 2/3 and the course exam(s) 1/3; the overall average is the plain mean of
-// all subjects that have grades.
+// all subjects that have grades. Every grade belongs to one semester (11/1 … 12/2);
+// the overview averages every subject's semester results.
 const GRADES_FILE = path.join(FILES_DIR, ".panel", "grades.json");
 const GR_ID = /^[a-z0-9]{1,16}$/;
+const GR_TERMS = ["11/1", "11/2", "12/1", "12/2"];
+const grTerm = (t) => (GR_TERMS.includes(t) ? t : GR_TERMS[0]);   // grades from before semesters existed land in 11/1
 let gradesLock = Promise.resolve();
 function withGrades(fn) {
   const run = gradesLock.then(async () => {
@@ -2859,15 +2957,16 @@ function cleanSubjects(list) {
       if (!Number.isInteger(pts) || pts < 1 || pts > 15) fail(400, "Points have to be between 1 and 15.");
       if (x.kind !== "n" && x.kind !== "k") fail(400, "Bad grade type.");
       gseen.add(x.id);
-      return { id: x.id, title: clip(x.title, 60), pts, kind: x.kind, ts: Number.isFinite(+x.ts) ? Math.round(+x.ts) : Date.now() };
+      return { id: x.id, title: clip(x.title, 60), pts, kind: x.kind, term: grTerm(x.term), ts: Number.isFinite(+x.ts) ? Math.round(+x.ts) : Date.now() };
     });
     return { id: s.id, name, grades };
   });
 }
 const mean = (a) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : null);
-function subjectAverage(s) {
-  const n = mean(s.grades.filter((g) => g.kind === "n").map((g) => g.pts));
-  const k = mean(s.grades.filter((g) => g.kind === "k").map((g) => g.pts));
+function subjectAverage(s, term) {
+  const list = s.grades.filter((g) => grTerm(g.term) === term);
+  const n = mean(list.filter((g) => g.kind === "n").map((g) => g.pts));
+  const k = mean(list.filter((g) => g.kind === "k").map((g) => g.pts));
   if (n != null && k != null) return (2 * n + k) / 3;
   return n ?? k;
 }
@@ -2876,13 +2975,14 @@ async function gradesRoutes(req, res, p, m) {
   if (p === "/api/grades" && m === "PUT") {
     const b = await readJson(req, 512 * 1024);
     const subjects = cleanSubjects(b.subjects);
-    return send(res, 200, await withGrades(async (g, save) => { g.subjects = subjects; await save(); return g; }));
+    const view = b.term === "all" || GR_TERMS.includes(b.term) ? b.term : null;     // the semester you were looking at
+    return send(res, 200, await withGrades(async (g, save) => { g.subjects = subjects; if (view) g.term = view; await save(); return g; }));
   }
   fail(404, "Not found.");
 }
 async function gradesSummary() {
   return withGrades((g) => {
-    const avgs = g.subjects.map(subjectAverage).filter((x) => x != null);
+    const avgs = g.subjects.flatMap((s) => GR_TERMS.map((t) => subjectAverage(s, t))).filter((x) => x != null);
     return { subjects: g.subjects.length, graded: avgs.length, grades: g.subjects.reduce((a, s) => a + s.grades.length, 0), avg: mean(avgs) };
   });
 }

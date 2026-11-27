@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.20
+
+Folder ZIPs, semesters and more laptop commands.
+
+- File Host: download a whole folder as one ZIP (⋯ menu of the folder). Subfolders are kept. It's packed while it downloads, so it needs no extra space on the server. Up to 4 GB per ZIP.
+- Grade calculator: semesters 11/1, 11/2, 12/1 and 12/2, each calculated on its own, plus an overview with every subject's semester averages. New grades go into the semester you picked. Grades from before are in 11/1: tap a grade to move it to another semester.
+- Updates: if a server skipped some versions, the update page now shows what's new in all of them together. One install always brings everything.
+- Laptop screen: new commands /updates install (Ubuntu updates, with the same checks as in the admin), /ip (LAN and Tailscale address) and /screen off (dark until you press a key). In German: /updates installieren, /bildschirm aus.
+
 ## 1.7.19
 
 Cat and command line on the laptop screen.

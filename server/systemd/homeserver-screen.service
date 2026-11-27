@@ -25,6 +25,8 @@ ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
 PrivateTmp=yes
+# only to hand jobs to the panel agent (e.g. Ubuntu updates), the same way the admin does
+ReadWritePaths=-/var/lib/panel/commands -/var/lib/panel/responses
 
 [Install]
 WantedBy=multi-user.target

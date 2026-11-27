@@ -6,7 +6,8 @@ Started by homeserver-screen.service, switched on and off in the admin
 Discord bot units and the Ubuntu update state. Draws a calm page: four big
 numbers, a line of status dots, the connection and the uptime, refreshed every 2 seconds.
 At the bottom a cat sits next to a command line: typing / lists a few fixed
-commands (Minecraft, bots, the cat). It is no shell, nothing else can be run.
+commands (Minecraft, bots, Ubuntu updates, the screen, the cat). It is no shell,
+nothing else can be run.
 """
 import json
 import os
@@ -18,6 +19,7 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 from pathlib import Path
@@ -313,6 +315,9 @@ LANG_CMDS = {
            ("/minecraft stop", "mc_stop", "Minecraft-Server stoppen"),
            ("/minecraft neustart", "mc_restart", "Minecraft-Server neu starten"),
            ("/bots neustart", "bots_restart", "alle laufenden Discord-Bots neu starten"),
+           ("/updates installieren", "sys_install", "Ubuntu-Updates installieren"),
+           ("/ip", "ip", "die Adressen des Servers zeigen"),
+           ("/bildschirm aus", "screen_off", "Bildschirm dunkel, eine Taste weckt ihn"),
            ("/katze schlafen", "cat_sleep", "die Katze schlafen legen"),
            ("/katze wach", "cat_wake", "die Katze aufwecken"),
            ("/hilfe", "help", "alle Befehle zeigen")],
@@ -320,6 +325,9 @@ LANG_CMDS = {
            ("/minecraft stop", "mc_stop", "stop the Minecraft server"),
            ("/minecraft restart", "mc_restart", "restart the Minecraft server"),
            ("/bots restart", "bots_restart", "restart all running Discord bots"),
+           ("/updates install", "sys_install", "install the Ubuntu updates"),
+           ("/ip", "ip", "show the server's addresses"),
+           ("/screen off", "screen_off", "screen dark, any key wakes it"),
            ("/cat sleep", "cat_sleep", "put the cat to sleep"),
            ("/cat wake", "cat_wake", "wake the cat up"),
            ("/help", "help", "show all commands")],
@@ -329,11 +337,18 @@ SAY = {
     "de": {"hint": "/ für Befehle", "unknown": "Unbekannter Befehl. Tippe / für alle.", "failed": "Hat nicht geklappt.",
            "mc_start": "Minecraft startet …", "mc_stop": "Minecraft wird gestoppt …", "mc_restart": "Minecraft startet neu …",
            "bots": "{n} Bots starten neu …", "bot1": "1 Bot startet neu …", "nobots": "Es läuft gerade kein Bot.",
-           "cat_sleep": "Pssst, die Katze schläft.", "cat_wake": "Die Katze ist wach."},
+           "cat_sleep": "Pssst, die Katze schläft.", "cat_wake": "Die Katze ist wach.",
+           "sys_wait": "Ubuntu-Updates werden geprüft …", "sys_ok": "Ubuntu-Updates werden installiert. Fortschritt im Admin unter Updates.",
+           "An update is already running.": "Es läuft schon ein Update.",
+           "Everything is already up to date.": "Ubuntu ist schon aktuell.",
+           "Stop Minecraft first. Docker restarts with this update.": "Erst Minecraft stoppen, Docker startet bei diesem Update neu.",
+           "noagent": "Der Agent antwortet nicht.", "noip": "Keine Adresse gefunden."},
     "en": {"hint": "/ for commands", "unknown": "Unknown command. Type / for all of them.", "failed": "That didn't work.",
            "mc_start": "Minecraft is starting …", "mc_stop": "Minecraft is stopping …", "mc_restart": "Minecraft is restarting …",
            "bots": "{n} bots are restarting …", "bot1": "1 bot is restarting …", "nobots": "No bot is running right now.",
-           "cat_sleep": "Shh, the cat is asleep.", "cat_wake": "The cat is awake."},
+           "cat_sleep": "Shh, the cat is asleep.", "cat_wake": "The cat is awake.",
+           "sys_wait": "Checking for Ubuntu updates …", "sys_ok": "Installing the Ubuntu updates. Progress in the admin under Updates.",
+           "noagent": "The agent doesn't answer.", "noip": "No address found."},
 }
 
 
@@ -346,6 +361,47 @@ def ctl(*args: str) -> bool:
         return subprocess.run(["systemctl", *args], capture_output=True, timeout=15).returncode == 0
     except (OSError, subprocess.SubprocessError):
         return False
+
+
+def agent(action: str, timeout: float = 150) -> tuple[bool, str]:
+    """Hands a job to the panel agent like the admin does; (ok, error)."""
+    name = f"screen-{os.urandom(6).hex()}.json"
+    cmd, resp = Path("/var/lib/panel/commands"), Path("/var/lib/panel/responses") / name
+    try:
+        tmp = cmd / f".{name}.tmp"
+        tmp.write_text(json.dumps({"action": action}))
+        tmp.rename(cmd / name)
+    except OSError:
+        return False, "noagent"
+    end = time.time() + timeout
+    while time.time() < end:
+        try:
+            r = json.loads(resp.read_text())
+            resp.unlink(missing_ok=True)
+            return bool(r.get("ok")), str(r.get("error") or "")
+        except (OSError, ValueError):
+            time.sleep(0.5)
+    return False, "noagent"
+
+
+def addresses() -> str:
+    lan, _ = address()
+    ts = ""
+    try:
+        ts = subprocess.run(["tailscale", "ip", "-4"], capture_output=True, text=True, timeout=4).stdout.split()[0]
+    except (OSError, subprocess.SubprocessError, IndexError):
+        pass
+    return "   ·   ".join(x for x in (f"LAN {lan}" if lan else "", f"Tailscale {ts}" if ts else "") if x)
+
+
+def blank(on: bool) -> None:
+    """Switches the console off (backlight too, on most laptops) or on again."""
+    try:
+        import fcntl
+        import termios
+        fcntl.ioctl(sys.stdout.fileno(), termios.TIOCLINUX, bytes([14 if on else 4]))   # TIOCL_(UN)BLANKSCREEN
+    except Exception:
+        pass
 
 
 class Cat:
@@ -404,6 +460,7 @@ class Prompt:
 
     def __init__(self, cat: Cat):
         self.cat, self.text, self.sel, self.msg, self.msg_colour, self.msg_until = cat, "", 0, "", FG, 0.0
+        self.dark = False
         self.esc = ""
 
     def suggestions(self) -> list[tuple[str, str, str]]:
@@ -490,6 +547,21 @@ class Prompt:
                 return
             ok = all([ctl("reset-failed", u) or True for u in units]) and all([ctl("restart", "--no-block", u) for u in units])
             self.say((say["bot1"] if len(units) == 1 else say["bots"].format(n=len(units))) if ok else say["failed"], OK if ok else BAD)
+        elif key == "sys_install":
+            self.say(say["sys_wait"], DIM)
+            self.msg_until = time.time() + 300
+
+            def job():
+                ok, err = agent("sys_install")
+                s = SAY[lang()]
+                self.say(s["sys_ok"] if ok else s.get(err, s["failed"] if lang() == "de" else err or s["failed"]), OK if ok else WARN)
+            threading.Thread(target=job, daemon=True).start()
+        elif key == "ip":
+            text = addresses()
+            self.say(text or say["noip"], FG if text else WARN)
+            self.msg_until = time.time() + 30
+        elif key == "screen_off":
+            self.dark = True
         elif key == "cat_sleep":
             self.cat.sleep(random.randint(400, 800))
             self.say(say["cat_sleep"], DIM)
@@ -559,11 +631,23 @@ def main() -> None:
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     out.write(SET_PALETTE + "\033[0m\033[?25l\033[2J")   # own colours, no cursor
-    last, due, tick, shown = None, 0.0, 0.0, 0
+    last, due, tick, shown, dark = None, 0.0, 0.0, 0, False
     cat = Cat()
     prompt = Prompt(cat)
     while True:
         cols, lines = shutil.get_terminal_size((120, 33))
+        if prompt.dark != dark:         # /screen off: nothing is drawn until a key is pressed
+            dark = prompt.dark
+            out.write("\033[2J")
+            out.flush()
+            blank(dark)
+            last = None
+        if dark:
+            ready = select.select([fd], [], [], 1)[0] if fd is not None else time.sleep(1)
+            if ready:
+                os.read(fd, 64)         # the key only wakes the screen
+                prompt.dark = False
+            continue
         if (cols, lines) != last:
             out.write("\033[2J")
             last, due = (cols, lines), 0.0
