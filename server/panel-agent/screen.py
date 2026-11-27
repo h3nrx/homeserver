@@ -5,12 +5,14 @@ Started by homeserver-screen.service, switched on and off in the admin
 (System). Only reads: the agent's stats, the public status of the site, the
 Discord bot units and the Ubuntu update state. Draws a calm page: four big
 numbers, a line of status dots, the connection and the uptime, refreshed every 2 seconds.
-Below that a little cat strolls along the bottom.
+At the bottom a cat sits next to a command line: typing / lists a few fixed
+commands (Minecraft, bots, the cat). It is no shell, nothing else can be run.
 """
 import json
 import os
 import random
 import re
+import select
 import shutil
 import signal
 import socket
@@ -296,124 +298,315 @@ def frame(cols: int, lines: int) -> list[str]:
     return g.render()
 
 
-# The cat at the bottom, drawn as a little pixel cat facing right (mirrored for left).
-# █ body, ▲ ears, ▮ legs, e the eye, t the tail (up or down, it swishes).
-CAT = {
-    "walk0": ["      ▲ ▲", "t██████e█", " ▮ ▮  ▮ ▮"],
-    "walk1": ["      ▲ ▲", "t██████e█", "  ▮    ▮ "],
-    "walk2": ["      ▲ ▲", "t██████e█", " ▮▮   ▮▮ "],
-    "sit":   ["      ▲ ▲", "    ███e█", "  t█████▮"],
-    "sleep": ["         ", "      ▲ ▲", "t██████e█"],
+# ------------------------------ the bottom ------------------------------
+# A cat sitting at the right edge (facing left, towards the command line), and
+# a line for a few fixed commands. Rows of the bottom strip, top to bottom:
+# 0 room for the cat's "z", 1-3 the cat, 2 messages, 3 the prompt, 4 the ground.
+CAT = ["      /\\_/\\ ", "  ,__/ o.o )", " (___(_)(_) "]
+MIRROR = str.maketrans("/\\()<>,", "\\/)(><,")
+CAT_W = 12
+STRIP = 5
+MC_UNIT = "minecraft.service"
+
+LANG_CMDS = {
+    "de": [("/minecraft start", "mc_start", "Minecraft-Server starten"),
+           ("/minecraft stop", "mc_stop", "Minecraft-Server stoppen"),
+           ("/minecraft neustart", "mc_restart", "Minecraft-Server neu starten"),
+           ("/bots neustart", "bots_restart", "alle laufenden Discord-Bots neu starten"),
+           ("/katze schlafen", "cat_sleep", "die Katze schlafen legen"),
+           ("/katze wach", "cat_wake", "die Katze aufwecken"),
+           ("/hilfe", "help", "alle Befehle zeigen")],
+    "en": [("/minecraft start", "mc_start", "start the Minecraft server"),
+           ("/minecraft stop", "mc_stop", "stop the Minecraft server"),
+           ("/minecraft restart", "mc_restart", "restart the Minecraft server"),
+           ("/bots restart", "bots_restart", "restart all running Discord bots"),
+           ("/cat sleep", "cat_sleep", "put the cat to sleep"),
+           ("/cat wake", "cat_wake", "wake the cat up"),
+           ("/help", "help", "show all commands")],
 }
-CAT_W = 9
-STRIP = 5          # rows: room for a hop, 3 rows of cat, the ground
-BODY, EYE = "37", "30;47"
+ALIASES = {name: key for cmds in LANG_CMDS.values() for name, key, _ in cmds}
+SAY = {
+    "de": {"hint": "/ für Befehle", "unknown": "Unbekannter Befehl. Tippe / für alle.", "failed": "Hat nicht geklappt.",
+           "mc_start": "Minecraft startet …", "mc_stop": "Minecraft wird gestoppt …", "mc_restart": "Minecraft startet neu …",
+           "bots": "{n} Bots starten neu …", "bot1": "1 Bot startet neu …", "nobots": "Es läuft gerade kein Bot.",
+           "cat_sleep": "Pssst, die Katze schläft.", "cat_wake": "Die Katze ist wach."},
+    "en": {"hint": "/ for commands", "unknown": "Unknown command. Type / for all of them.", "failed": "That didn't work.",
+           "mc_start": "Minecraft is starting …", "mc_stop": "Minecraft is stopping …", "mc_restart": "Minecraft is restarting …",
+           "bots": "{n} bots are restarting …", "bot1": "1 bot is restarting …", "nobots": "No bot is running right now.",
+           "cat_sleep": "Shh, the cat is asleep.", "cat_wake": "The cat is awake."},
+}
+
+
+def lang() -> str:
+    return "de" if T is TEXT["de"] else "en"
+
+
+def ctl(*args: str) -> bool:
+    try:
+        return subprocess.run(["systemctl", *args], capture_output=True, timeout=15).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
 
 
 class Cat:
-    """Walks with moving legs, hops now and then, sits and blinks, sometimes naps. The tail swishes."""
+    """Sits, blinks, flicks its tail, twitches an ear, and now and then naps."""
 
     def __init__(self):
-        self.x, self.dir, self.state, self.t, self.tick, self.blink = 10.0, 1, "walk", 0, 0, 0
+        self.state, self.t, self.tick = "sit", random.randint(150, 400), 0
+        self.blink = self.tail = self.ear = 0
 
-    def step(self, lo: int, hi: int) -> None:
+    def sleep(self, ticks: int) -> None:
+        self.state, self.t = "sleep", ticks
+
+    def wake(self) -> None:
+        self.state, self.t = "sit", random.randint(150, 400)
+
+    def step(self) -> None:
         self.tick += 1
         self.t -= 1
         r = random.random()
-        if self.state in ("sit", "sleep"):
-            if self.state == "sit":
-                self.blink = self.blink - 1 if self.blink else (2 if r < 0.03 else 0)
+        self.blink, self.tail, self.ear = max(0, self.blink - 1), max(0, self.tail - 1), max(0, self.ear - 1)
+        if self.state == "sit":
+            if r < 0.025:
+                self.blink = 2
+            elif r < 0.045:
+                self.tail = 5
+            elif r < 0.052:
+                self.ear = 2
             if self.t <= 0:
-                self.state, self.blink = "walk", 0
-                if random.random() < 0.5:
-                    self.dir = -self.dir
-            return
-        if self.state == "hop":
-            self.x += self.dir * 1.0
-            if self.t <= 0:
-                self.state = "walk"
-        else:
-            self.x += self.dir * 0.5
-            if r < 0.005:
-                self.state, self.t = "sit", random.randint(30, 90)
-            elif r < 0.0065:
-                self.state, self.t = "sleep", random.randint(100, 250)
-            elif r < 0.015:
-                self.state, self.t = "hop", 4
-            elif r < 0.019:
-                self.dir = -self.dir
-        if self.x <= lo:
-            self.x, self.dir = lo, 1
-        elif self.x >= hi - CAT_W:
-            self.x, self.dir = hi - CAT_W, -1
+                self.sleep(random.randint(200, 600)) if random.random() < 0.35 else self.wake()
+        elif self.t <= 0:
+            self.wake()
+            self.blink = 3      # still a bit sleepy
 
-    def sprite(self) -> list[str]:
-        if self.state == "walk":
-            rows = CAT[("walk0", "walk1", "walk2", "walk1")[int(self.x * 2) % 4]]   # legs follow the ground, no sliding
-        elif self.state == "hop":
-            rows = CAT["walk2"] if self.t > 1 else CAT["walk0"]
-        else:
-            rows = CAT[self.state]
-        tail_up = (self.tick // 6) % 2 if self.state != "sleep" else 0
-        out = []
-        for i, line in enumerate(rows):
-            if "t" in line:
-                if tail_up and i > 0:     # the tail flicks up into the row above
-                    out[i - 1] = out[i - 1][:line.index("t")] + "▮" + out[i - 1][line.index("t") + 1:]
-                    line = line.replace("t", " ")
-                else:
-                    line = line.replace("t", "━")
-            out.append(line.ljust(CAT_W))
-        return out if self.dir > 0 else [x[::-1] for x in out]
-
-    def draw(self, cols: int, lo: int, hi: int) -> list[str]:
-        g = Grid(cols, STRIP)
-        g.put(lo, STRIP - 1, "─" * (hi - lo), DIM)
-        y = 0 if self.state == "hop" and 1 <= self.t <= 3 else 1
-        eye = "━" if self.state == "sleep" or self.blink else "•"
-        for i, line in enumerate(self.sprite()):
+    def draw(self, g: "Grid", x: int) -> None:
+        rows = list(CAT)
+        if self.state == "sleep" or self.blink:
+            rows[1] = rows[1].replace("o.o", "-.-")
+        if self.tail or self.state == "sleep" and (self.tick // 10) % 4 == 0:
+            rows[1] = rows[1].replace(",", "~")
+        if self.ear:
+            rows[0] = rows[0][:-2] + "| "
+        for i, line in enumerate(r.ljust(CAT_W)[::-1].translate(MIRROR) for r in rows):    # facing left
             for j, ch in enumerate(line):
-                if ch == "e":
-                    g.put(int(self.x) + j, y + i, eye, EYE)
-                elif ch != " ":
-                    g.put(int(self.x) + j, y + i, ch, BODY)
+                if ch != " ":
+                    g.put(x + j, 1 + i, ch, "37")
         if self.state == "sleep":
-            z = "z" if (self.tick // 8) % 2 else "Z"
-            zx = int(self.x) + (CAT_W - 1 if self.dir > 0 else 0) + (1 if self.dir > 0 else -1)
-            g.put(zx, (self.tick // 8) % 2, z, DIM)
-        return g.render()
+            phase = (self.tick // 6) % 3
+            if phase == 1:
+                g.put(x - 1, 1, "z", DIM)
+            elif phase == 2:
+                g.put(x - 2, 0, "Z", DIM)
+
+
+class Prompt:
+    """The command line: typing, the / list, running a command, a short answer."""
+
+    def __init__(self, cat: Cat):
+        self.cat, self.text, self.sel, self.msg, self.msg_colour, self.msg_until = cat, "", 0, "", FG, 0.0
+        self.esc = ""
+
+    def suggestions(self) -> list[tuple[str, str, str]]:
+        if not self.text.startswith("/"):
+            return []
+        q = self.text.lower()
+        return [c for c in LANG_CMDS[lang()] if c[0].startswith(q) and c[0] != q] or \
+            ([] if q in ALIASES else [c for c in LANG_CMDS[lang()] if any(w.startswith(q[1:]) for w in c[0][1:].split())])
+
+    def say(self, text: str, colour: str = FG) -> None:
+        self.msg, self.msg_colour, self.msg_until = text, colour, time.time() + 8
+
+    def feed(self, data: str) -> None:
+        data = self.esc + data
+        self.esc = ""
+        i = 0
+        while i < len(data):
+            ch = data[i]
+            if ch == "\x1b":
+                seq = data[i:i + 3]
+                if len(seq) < 3 and i + len(seq) == len(data) and seq != "\x1b":
+                    self.esc = seq          # rest of an arrow key comes with the next read
+                    return
+                if seq in ("\x1b[A", "\x1b[B"):
+                    n = len(self.suggestions())
+                    if n:
+                        self.sel = (self.sel + (1 if seq == "\x1b[B" else -1)) % n
+                    i += 3
+                    continue
+                if seq.startswith("\x1b[") and len(seq) == 3:
+                    i += 3              # other keys: ignored
+                    continue
+                self.text, self.sel = "", 0     # Esc alone: clear
+            elif ch in ("\x7f", "\x08"):
+                self.text, self.sel = self.text[:-1], 0
+            elif ch in ("\r", "\n"):
+                self.enter()
+            elif ch == "\t":
+                sug = self.suggestions()
+                if sug:
+                    self.text, self.sel = sug[min(self.sel, len(sug) - 1)][0], 0
+            elif ch in ("\x03", "\x15"):  # Ctrl+C, Ctrl+U
+                self.text, self.sel = "", 0
+            elif ch >= " " and len(self.text) < 40:
+                if not self.text and ch != "/":
+                    self.text = "/"
+                self.text, self.sel = self.text + ch, 0
+            i += 1
+
+    def enter(self) -> None:
+        q = " ".join(self.text.lower().split())
+        if not q:
+            return
+        if q in ALIASES:
+            self.text, self.sel = "", 0
+            self.run(ALIASES[q])
+            return
+        sug = self.suggestions()
+        if sug:                          # first fill in the picked command, Enter again runs it
+            self.text, self.sel = sug[min(self.sel, len(sug) - 1)][0], 0
+        else:
+            self.text, self.sel = "", 0
+            self.say(SAY[lang()]["unknown"], WARN)
+
+    def run(self, key: str) -> None:
+        say = SAY[lang()]
+        if key == "help":
+            self.text = "/"
+        elif key.startswith("mc_"):
+            ctl("reset-failed", MC_UNIT)
+            verb = {"mc_start": "start", "mc_stop": "stop", "mc_restart": "restart"}[key]
+            ok = ctl(verb, "--no-block", MC_UNIT)
+            self.say(say[key] if ok else say["failed"], OK if ok else BAD)
+        elif key == "bots_restart":
+            units = []
+            try:
+                out = subprocess.run(["systemctl", "list-units", "--all", "--plain", "--no-legend", "discord-bot@*"],
+                                     capture_output=True, text=True, timeout=10).stdout
+                units = [l.split()[0] for l in out.splitlines() if len(l.split()) > 2 and l.split()[2] in ("active", "failed")]
+            except (OSError, subprocess.SubprocessError):
+                pass
+            if not units:
+                self.say(say["nobots"], DIM)
+                return
+            ok = all([ctl("reset-failed", u) or True for u in units]) and all([ctl("restart", "--no-block", u) for u in units])
+            self.say((say["bot1"] if len(units) == 1 else say["bots"].format(n=len(units))) if ok else say["failed"], OK if ok else BAD)
+        elif key == "cat_sleep":
+            self.cat.sleep(random.randint(400, 800))
+            self.say(say["cat_sleep"], DIM)
+        elif key == "cat_wake":
+            self.cat.wake()
+            self.say(say["cat_wake"], DIM)
+
+    def draw(self, g: "Grid", m: int, width: int) -> None:
+        if self.msg and time.time() < self.msg_until:
+            g.put(m, 2, self.msg[:width], self.msg_colour)
+        x = g.put(m, 3, "› ", ACC)
+        if self.text:
+            x = g.put(x, 3, self.text[-(width - 4):], FG)
+        if int(time.time() * 2) % 2 == 0:
+            g.put(x, 3, "_", ACC)
+        if not self.text:
+            g.put(x + 2, 3, SAY[lang()]["hint"], DIM)
+
+    def popup(self, m: int, room: int) -> list:
+        """The / list as painters, bottom entry last; it ends right above the prompt."""
+        sug = self.suggestions()
+        width = max((len(c[0]) for c in sug), default=0) + 3
+        sel = min(self.sel, len(sug) - 1)
+
+        def painter(i, name, desc):
+            def paint(g, y):
+                on = i == sel
+                g.put(m, y, ("› " if on else "  ") + name, ACC if on else FG)
+                g.put(m + 2 + width, y, desc, FG if on else DIM)
+            return paint
+        return [painter(i, name, desc) for i, (name, _, desc) in enumerate(sug)][-room:]
+
+
+def bottom(cols: int, cat: Cat, prompt: Prompt, pop: list) -> list[str]:
+    m = 6 if cols >= 80 else 1
+    g = Grid(cols, STRIP)
+    cx = cols - m - CAT_W
+    g.put(m, STRIP - 1, "─" * (cols - 2 * m), DIM)
+    prompt.draw(g, m, cx - m - 2)
+    for i, paint in enumerate(pop[-3:][::-1]):   # the last three entries sit in rows 2, 1, 0
+        g.put(0, 2 - i, " " * (cx - 1))
+        paint(g, 2 - i)
+    cat.draw(g, cx)
+    return g.render()
 
 
 def main() -> None:
     out = sys.stdout
-    stop = lambda *_: (out.write("\033]R\033[0m\033[2J\033[H\033[?25h"), out.flush(), sys.exit(0))
+    fd, saved = None, None
+    try:                                # keys one by one, no echo, Ctrl+C doesn't stop the screen
+        import termios
+        fd = sys.stdin.fileno()
+        saved = termios.tcgetattr(fd)
+        mode = termios.tcgetattr(fd)
+        mode[3] &= ~(termios.ICANON | termios.ECHO | termios.ISIG)
+        termios.tcsetattr(fd, termios.TCSANOW, mode)
+    except Exception:
+        fd = None
+
+    def stop(*_):
+        if saved is not None:
+            termios.tcsetattr(fd, termios.TCSANOW, saved)
+        out.write("\033]R\033[0m\033[2J\033[H\033[?25h")
+        out.flush()
+        sys.exit(0)
+
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     out.write(SET_PALETTE + "\033[0m\033[?25l\033[2J")   # own colours, no cursor
-    last, due, cat = None, 0.0, Cat()
+    last, due, tick, shown = None, 0.0, 0.0, 0
+    cat = Cat()
+    prompt = Prompt(cat)
     while True:
         cols, lines = shutil.get_terminal_size((120, 33))
         if (cols, lines) != last:
             out.write("\033[2J")
             last, due = (cols, lines), 0.0
         strip = lines - STRIP - 1 if lines >= 26 and cols >= 60 else lines
+        pop = prompt.popup(6 if cols >= 80 else 1, strip - 1) if strip < lines else []
+        extra = pop[:-3]                # entries that don't fit into the strip go above it
+        if len(extra) < shown:
+            due = 0.0                   # the list got shorter: bring the values back underneath
         buf = ""
-        if time.time() >= due:              # the values: every 2 seconds
+        if time.time() >= due:          # the values: every 2 seconds
             try:
                 rows = frame(cols, lines)
-            except Exception as e:          # never die because one value was odd
+            except Exception as e:      # never die because one value was odd
                 rows = [f"  {e}"]
             rows = (rows + [""] * lines)[:strip]
             buf += "\033[H" + "\n".join(r + "\033[K" for r in rows)
             due = time.time() - time.time() % 2 + 2.05
-        if strip < lines:                   # the cat: about 7 times a second
-            m = 6 if cols >= 80 else 1
-            cat.step(m, cols - m)
-            for i, r in enumerate(cat.draw(cols, m, cols - m)):
+        if strip < lines:
+            if time.time() >= tick:     # the cat: about 7 steps a second
+                cat.step()
+                tick = time.time() + 0.15
+            for i, r in enumerate(bottom(cols, cat, prompt, pop)):
                 buf += f"\033[{strip + i + 1};1H{r}\033[K"
+            for i, paint in enumerate(extra):
+                g = Grid(cols, 1)
+                paint(g, 0)
+                buf += f"\033[{strip - len(extra) + i + 1};1H{g.render()[0]}\033[K"
+            shown = len(extra)
         out.write(buf)
         out.flush()
-        time.sleep(0.15)
+        if fd is not None:
+            try:
+                ready = select.select([fd], [], [], 0.15)[0]
+            except (OSError, ValueError):
+                ready = []
+            if ready:
+                data = os.read(fd, 64)
+                if data:
+                    prompt.feed(data.decode("utf-8", "ignore"))
+                else:
+                    time.sleep(0.15)    # the terminal went away; keep drawing
+        else:
+            time.sleep(0.15)
 
 if __name__ == "__main__":
     main()

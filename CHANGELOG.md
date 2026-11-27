@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.19
+
+Cat and command line on the laptop screen.
+
+- The cat looks like before again. It now sits at the right edge, blinks, flicks its tail, twitches an ear and takes a nap now and then ("z").
+- New: a command line above the bottom line. Type / and a list of commands appears. Pick one with the arrow keys, Tab fills it in, Enter runs it.
+- Commands: /minecraft start, stop and restart, /bots restart (all running Discord bots), /cat sleep and wake, /help. In German: /minecraft neustart, /bots neustart, /katze schlafen, /katze wach, /hilfe.
+- It's not a Linux terminal: only these commands work. The normal login is still on Ctrl+Alt+F2.
+
 ## 1.7.18
 
 Smaller, livelier cat.
