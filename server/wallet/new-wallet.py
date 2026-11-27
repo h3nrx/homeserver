@@ -221,39 +221,39 @@ def main():
     print("  __BRAND__  -  NEW WALLET (Bitcoin + Litecoin)")
     print("=" * 60)
     print("""
-Gleich kommen 12 Woerter. Das IST dein Geld:
-  - Schreib sie mit Stift auf Papier, in der richtigen Reihenfolge.
-  - Kein Foto, kein Screenshot, nicht in Discord/Chat/Notizen-App.
-  - Wer die Woerter hat, hat das Geld. Ohne Woerter ist es weg.
-  - Sie werden NICHT gespeichert. Nur jetzt, einmal.
+12 words come next. They ARE your money:
+  - Write them down with a pen on paper, in the right order.
+  - No photo, no screenshot, not in Discord/chat/a notes app.
+  - Whoever has the words has the money. Without the words it's gone.
+  - They are NOT saved. Only now, once.
 """)
-    if input("Stift und Papier bereit? (ja/nein) ").strip().lower() not in ("ja", "j", "yes", "y"):
-        print("Ok, dann spaeter nochmal starten.")
+    if input("Pen and paper ready? (yes/no) ").strip().lower() not in ("ja", "j", "yes", "y"):
+        print("Ok, start again later then.")
         return
 
     mnemonic = mnemonic_from_entropy(secrets.token_bytes(16), words)
     clear()
-    print("\n  DEINE 12 WOERTER  (aufschreiben!)\n")
+    print("\n  YOUR 12 WORDS  (write them down!)\n")
     for i in range(0, 12, 3):
         print("   " + "".join(f"{i + j + 1:>2}. {mnemonic[i + j]:<12}" for j in range(3)))
     print()
-    input("Fertig aufgeschrieben und nochmal verglichen? Dann Enter druecken...")
+    input("Written down and compared once more? Then press Enter...")
 
     # check that they were written down correctly
     clear()
-    print("\nKurzer Test, ob alles richtig auf dem Zettel steht:\n")
+    print("\nQuick test that everything on your paper is right:\n")
     for n in sorted(secrets.SystemRandom().sample(range(12), 3)):
         for tries in range(3):
-            if input(f"  Wort Nr. {n + 1}: ").strip().lower() == mnemonic[n]:
+            if input(f"  Word no. {n + 1}: ").strip().lower() == mnemonic[n]:
                 break
-            print("  Stimmt nicht - schau nochmal auf deinen Zettel.")
+            print("  That's not it - check your paper again.")
         else:
             clear()
-            print("\nZu oft falsch. Nichts wurde gespeichert - bitte neu starten und sauber abschreiben.")
+            print("\nWrong too often. Nothing was saved - please start again and copy them carefully.")
             return
 
     clear()
-    print("\nRichtig! Erzeuge Adressen ...")
+    print("\nCorrect! Creating addresses ...")
     seed = seed_from_mnemonic(" ".join(mnemonic))
     btc_zpub, btc = account(seed, 0, "bc")
     ltc_zpub, ltc = account(seed, 2, "ltc")
@@ -272,14 +272,14 @@ Gleich kommen 12 Woerter. Das IST dein Geld:
     os.replace(tmp, OUT)
 
     print(f"""
-Fertig! Gespeichert wurden NUR die oeffentlichen Adressen.
+Done! ONLY the public addresses were saved.
 
   Bitcoin:   {btc['receive'][0]}
   Litecoin:  {ltc['receive'][0]}
 
-Die Adressen + QR-Codes siehst du jetzt im Admin unter "Wallet".
-Tipp: Schick erst einen kleinen Betrag und teste, ob alles ankommt.
-Zettel sicher aufbewahren (nicht beim Laptop).
+You now see the addresses + QR codes in the admin under "Wallet".
+Tip: send a small amount first and check that it arrives.
+Keep the paper somewhere safe (not next to the laptop).
 """)
 
 
@@ -288,4 +288,4 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         clear()
-        print("\nAbgebrochen. Nichts gespeichert.")
+        print("\nCancelled. Nothing saved.")

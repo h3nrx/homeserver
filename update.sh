@@ -2,18 +2,18 @@
 # =====================================================================
 #  Homeserver - Updater
 #
-#    sudo bash update.sh v1.2.3              Version von GitHub installieren
-#    sudo bash update.sh --local <ordner>    aus einer entpackten Kopie installieren
-#    sudo bash update.sh --files-only <ordner>
-#                                            nur Dateien kopieren (fuer install.sh)
+#    sudo bash update.sh v1.2.3              install a version from GitHub
+#    sudo bash update.sh --local <folder>    install from an unpacked copy
+#    sudo bash update.sh --files-only <folder>
+#                                            only copy the files (for install.sh)
 #
-#  Normalerweise startet das Admin-Panel dieses Skript (Updates -> Install).
-#  Ablauf: herunterladen, pruefen, Sicherung der ersetzten Dateien,
-#  installieren, betroffene Dienste neu starten, Gesundheits-Check.
-#  Antwortet das Panel danach nicht, wird automatisch zurueckgesetzt.
+#  Normally the admin panel starts this script (Updates -> Install).
+#  Steps: download, check, back up the files that get replaced,
+#  install, restart the services that changed, health check.
+#  If the panel doesn't answer afterwards, everything is rolled back.
 #
-#  Nie angefasst werden: .env-Dateien, Passwoerter (panel-data), hochgeladene
-#  Dateien, Bots, Musik, die Minecraft-Welt und eigene Logos.
+#  Never touched: .env files, passwords (panel-data), uploaded files,
+#  bots, music, the Minecraft world and your own logos.
 # =====================================================================
 set -uo pipefail
 umask 022
@@ -32,30 +32,30 @@ SYSD=${HS_SYSTEMD:-/etc/systemd/system}
 PANEL_URL=${HS_PANEL_URL:-http://127.0.0.1:8080}
 KEYS=(HOME USER BRAND SLUG ICON PUBLIC_URL DISCORD_ID MC_MEMORY TITLE_SIZE OS_TITLE_SIZE REPO)
 
-die() { echo "FEHLER: $*" >&2; exit 1; }
-[ "$(id -u)" -eq 0 ] || [ -n "${HS_CONF:-}" ] || die "Bitte mit sudo starten."
+die() { echo "ERROR: $*" >&2; exit 1; }
+[ "$(id -u)" -eq 0 ] || [ -n "${HS_CONF:-}" ] || die "Please run this with sudo."
 HEALTH_TRIES=${HS_HEALTH_TRIES:-45}
-[ -r "$CONF" ] || die "$CONF fehlt. Erst install.sh oder bootstrap.sh ausfuehren."
+[ -r "$CONF" ] || die "$CONF is missing. Run install.sh or bootstrap.sh first."
 # shellcheck disable=SC1090
 . "$CONF"
-: "${HOMEDIR:?HOMEDIR fehlt in $CONF}" "${OWNER:?OWNER fehlt in $CONF}"
+: "${HOMEDIR:?HOMEDIR is missing in $CONF}" "${OWNER:?OWNER is missing in $CONF}"
 REPO="${REPO:-}"
 
 MODE=release TAG="" SRC=""
 case "${1:-}" in
-  --local)      MODE=local; SRC="${2:-}"; [ -d "$SRC" ] || die "Ordner fehlt: $SRC" ;;
-  --files-only) MODE=files; SRC="${2:-}"; [ -d "$SRC" ] || die "Ordner fehlt: $SRC" ;;
+  --local)      MODE=local; SRC="${2:-}"; [ -d "$SRC" ] || die "Folder is missing: $SRC" ;;
+  --files-only) MODE=files; SRC="${2:-}"; [ -d "$SRC" ] || die "Folder is missing: $SRC" ;;
   v*)           TAG="$1" ;;
-  *)            die "Aufruf: sudo bash update.sh v1.2.3" ;;
+  *)            die "Usage: sudo bash update.sh v1.2.3" ;;
 esac
 if [ "$MODE" = release ]; then
-  [[ $TAG =~ ^v[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]] || die "Ungueltige Version: $TAG"
-  [[ $REPO =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die "REPO ist in $CONF nicht gesetzt."
+  [[ $TAG =~ ^v[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]] || die "Invalid version: $TAG"
+  [[ $REPO =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die "REPO isn't set in $CONF."
 fi
 
 mkdir -p "$VAR"
 exec 9>"$VAR/update.lock"
-flock -n 9 || die "Es laeuft schon ein Update."
+flock -n 9 || die "An update is already running."
 if [ "$MODE" != files ]; then
   exec > >(tee -a "$LOG") 2>&1
   echo; echo "===== $(date '+%F %T') update $MODE ${TAG:-$SRC} ====="
@@ -83,39 +83,39 @@ os.replace(t, p)
 PY
 }
 step() { STEP="$1"; echo "--> $1"; status running; }
-fail_early() { echo "ABBRUCH: $1"; status failed "$1"; [ "$MODE" = release ] && rm -rf "$WORK"; exit 1; }
+fail_early() { echo "STOPPED: $1"; status failed "$1"; [ "$MODE" = release ] && rm -rf "$WORK"; exit 1; }
 
-# ---------- 1. Quelle holen ----------
+# ---------- 1. get the source ----------
 step download
 if [ "$MODE" = release ]; then
   rm -rf "$WORK"; mkdir -p "$WORK/src"
   KEY="$(tr -d ' \r\n' < "$VAR/github.token" 2>/dev/null || true)"
   if [[ $KEY =~ ^github_pat_[A-Za-z0-9_]+$ ]]; then
-    # privates Repo: der Schluessel steht nie in der Prozessliste, und curl
-    # schickt ihn bei der Weiterleitung nicht an andere Server mit
+    # private repo: the key never shows up in the process list, and curl
+    # doesn't send it on to other servers when redirected
     curl -fsSL --retry 3 --max-time 600 -H @<(printf 'Authorization: Bearer %s\n' "$KEY") \
       "https://api.github.com/repos/$REPO/tarball/$TAG" -o "$WORK/src.tgz" \
-      || fail_early "Download von GitHub hat nicht geklappt (Zugangsschluessel abgelaufen?)."
+      || fail_early "The download from GitHub didn't work (access key expired?)."
   else
     curl -fsSL --retry 3 --max-time 600 "https://codeload.github.com/$REPO/tar.gz/refs/tags/$TAG" -o "$WORK/src.tgz" \
-      || fail_early "Download von GitHub hat nicht geklappt."
+      || fail_early "The download from GitHub didn't work."
   fi
   unset KEY
   tar -xzf "$WORK/src.tgz" -C "$WORK/src" --strip-components=1 --no-same-owner --no-same-permissions \
-    || fail_early "Das Paket ist kaputt."
+    || fail_early "The package is broken."
   SRC="$WORK/src"
 else
   SRC="$(cd "$SRC" && pwd)"
   mkdir -p "$WORK"
 fi
 
-# ---------- 2. Pruefen + vorbereiten ----------
+# ---------- 2. check + prepare ----------
 step check
 [ -f "$SRC/VERSION" ] && [ -f "$SRC/server/bio/panel/server.js" ] && [ -f "$SRC/update.sh" ] \
-  || fail_early "Das Paket ist unvollstaendig."
+  || fail_early "The package is incomplete."
 NEWVER="$(tr -d ' \r\n' < "$SRC/VERSION")"
-[[ $NEWVER =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]] || fail_early "VERSION im Paket ist ungueltig."
-[ "$MODE" != release ] || [ "v$NEWVER" = "$TAG" ] || fail_early "Paket-Version ($NEWVER) passt nicht zu $TAG."
+[[ $NEWVER =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]] || fail_early "VERSION in the package is invalid."
+[ "$MODE" != release ] || [ "v$NEWVER" = "$TAG" ] || fail_early "Package version ($NEWVER) doesn't match $TAG."
 TO="v$NEWVER"
 
 STAGE="$WORK/stage"
@@ -134,28 +134,28 @@ for k in "${KEYS[@]}"; do
 done
 grep -rlIZ '__[A-Z_]*__' "$STAGE" | xargs -0 -r sed -i "${SEDARGS[@]}"
 left="$(grep -rlI -e '__HOME__' -e '__USER__' -e '__BRAND__' -e '__SLUG__' -e '__ICON__' "$STAGE" || true)"
-[ -z "$left" ] || fail_early "Platzhalter nicht ersetzt in: ${left//$STAGE\//}"
+[ -z "$left" ] || fail_early "Placeholders not filled in: ${left//$STAGE\//}"
 
-while IFS= read -r -d '' f; do bash -n "$f" || fail_early "Syntaxfehler in ${f#"$STAGE"/}"; done \
+while IFS= read -r -d '' f; do bash -n "$f" || fail_early "Syntax error in ${f#"$STAGE"/}"; done \
   < <(find "$STAGE" -name '*.sh' -print0)
-python3 - "$STAGE" <<'PY' || fail_early "Python-Syntaxfehler im Paket."
+python3 - "$STAGE" <<'PY' || fail_early "Python syntax error in the package."
 import ast, pathlib, sys
 for f in pathlib.Path(sys.argv[1]).rglob("*.py"):
     ast.parse(f.read_text(encoding="utf-8"), str(f))
 PY
 if command -v docker >/dev/null && docker image inspect node:22-alpine >/dev/null 2>&1; then
   docker run --rm --network none -v "$STAGE/bio/panel:/c:ro" node:22-alpine node --check /c/server.js >/dev/null \
-    || fail_early "JavaScript-Syntaxfehler in server.js."
+    || fail_early "JavaScript syntax error in server.js."
 fi
 
 dest() { case $1 in systemd/*) echo "$SYSD/${1#systemd/}" ;; *) echo "$HOMEDIR/$1" ;; esac; }
 mapfile -t FILES < <(cd "$STAGE" && find . -type f -printf '%P\n' | sort)
 CHANGED=()
 for r in "${FILES[@]}"; do cmp -s "$STAGE/$r" "$(dest "$r")" || CHANGED+=("$r"); done
-echo "    $NEWVER: ${#CHANGED[@]} von ${#FILES[@]} Dateien sind neu oder geaendert"
+echo "    $NEWVER: ${#CHANGED[@]} of ${#FILES[@]} files are new or changed"
 need() { printf '%s\n' "${CHANGED[@]}" | grep -qE "$1"; }
 
-# ---------- 3. Sicherung ----------
+# ---------- 3. backup ----------
 step backup
 rm -rf "$BACK"; mkdir -p "$BACK/files"; : > "$BACK/new.txt"
 printf '%s\n' "${CHANGED[@]}" > "$BACK/changed.txt"
@@ -164,13 +164,13 @@ for r in "${CHANGED[@]}"; do
   d="$(dest "$r")"
   if [ -e "$d" ]; then
     mkdir -p "$BACK/files/$(dirname "$r")"
-    cp -a "$d" "$BACK/files/$r" || fail_early "Sicherung von $r hat nicht geklappt."
+    cp -a "$d" "$BACK/files/$r" || fail_early "Backing up $r didn't work."
   else
     echo "$r" >> "$BACK/new.txt"
   fi
 done
 
-# ---------- 4. Installieren ----------
+# ---------- 4. install ----------
 put() { # <rel> <from-dir>: overwrite in place (same inode, so bind-mounted single files stay live)
   local r="$1" from="$2" d; d="$(dest "$r")"
   if [ -e "$d" ]; then cp "$from/$r" "$d"; return; fi
@@ -182,7 +182,7 @@ put() { # <rel> <from-dir>: overwrite in place (same inode, so bind-mounted sing
 }
 
 restore() {
-  echo "--> Sicherung wird zurueckgespielt"
+  echo "--> Restoring the backup"
   local r
   while IFS= read -r r; do [ -n "$r" ] && cp "$BACK/files/$r" "$(dest "$r")"; done \
     < <(cd "$BACK/files" && find . -type f -printf '%P\n')
@@ -204,7 +204,7 @@ apply() { # restart only what changed
   if need '^playit/compose\.yaml$' && [ "$(docker inspect -f '{{.State.Running}}' playit 2>/dev/null)" = true ]; then
     (cd "$HOMEDIR/playit" && docker compose up -d) || return 1
   fi
-  if need '^minecraft/'; then echo "    Minecraft-Aenderungen gelten ab dem naechsten Minecraft-Neustart."; fi
+  if need '^minecraft/'; then echo "    Minecraft changes take effect at the next Minecraft restart."; fi
   return 0
 }
 
@@ -224,8 +224,8 @@ rollback() {
   echo "!!! $why"
   STEP=rollback; status running "$why"
   restore
-  apply || echo "    WARNUNG: Neustart nach dem Zuruecksetzen hatte Fehler"
-  healthy "" || echo "    WARNUNG: Panel antwortet auch mit der alten Version nicht"
+  apply || echo "    WARNING: restarting after the rollback had errors"
+  healthy "" || echo "    WARNING: the panel doesn't answer with the old version either"
   status rolledback "$why"
   rm -rf "$WORK"
   exit 1
@@ -233,11 +233,11 @@ rollback() {
 
 step install
 for r in "${CHANGED[@]}"; do
-  put "$r" "$STAGE" || { [ "$MODE" = files ] && die "Kopieren von $r hat nicht geklappt."; rollback "Kopieren von $r hat nicht geklappt."; }
+  put "$r" "$STAGE" || { [ "$MODE" = files ] && die "Copying $r didn't work."; rollback "Copying $r didn't work."; }
 done
 
 if [ "$MODE" = files ]; then
-  echo "    Dateien liegen bereit ($NEWVER)."
+  echo "    Files are in place ($NEWVER)."
   install -d -m 755 "$LIB"
   install -m 755 "$SRC/update.sh" "$LIB/update.sh.new" && mv -f "$LIB/update.sh.new" "$LIB/update.sh"
   echo "$NEWVER" > "$ETC/VERSION"
@@ -245,21 +245,21 @@ if [ "$MODE" = files ]; then
   exit 0
 fi
 
-# ---------- 5. Dienste neu starten ----------
+# ---------- 5. restart services ----------
 step restart
-apply || rollback "Ein Dienst wollte mit der neuen Version nicht starten."
+apply || rollback "A service wouldn't start with the new version."
 
-# ---------- 6. Gesundheits-Check ----------
+# ---------- 6. health check ----------
 step health
-healthy "$NEWVER" || rollback "Das Panel hat nach dem Update nicht geantwortet."
+healthy "$NEWVER" || rollback "The panel didn't answer after the update."
 
-# ---------- Fertig ----------
+# ---------- done ----------
 STEP=done
 install -d -m 755 "$LIB"
 install -m 755 "$SRC/update.sh" "$LIB/update.sh.new" && mv -f "$LIB/update.sh.new" "$LIB/update.sh"
 echo "$NEWVER" > "$ETC/VERSION"
 status ok
-echo "    Fertig: ${FROM:-?} -> $NEWVER"
+echo "    Done: ${FROM:-?} -> $NEWVER"
 rm -rf "$WORK"
 if need '^(panel-agent/screen\.py|systemd/homeserver-screen\.service)$' && systemctl is-active --quiet homeserver-screen; then
   systemctl restart homeserver-screen || true

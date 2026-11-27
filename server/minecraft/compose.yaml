@@ -18,8 +18,8 @@ services:
       - SETUID
       - SETGID
     ports:
-      # Im Heimnetz direkt erreichbar. Der Router leitet den Port nicht weiter;
-      # von aussen kommen Spieler ueber den Tunnel.
+      # Reachable directly at home. The router doesn't forward the port;
+      # players from outside come in through the tunnel.
       - "0.0.0.0:25565:25565"
     environment:
       EULA: "TRUE"

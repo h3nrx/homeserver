@@ -1,5 +1,5 @@
 "use strict";
-// Liest ein Passwort von stdin und gibt den scrypt-Hash als JSON aus.
+// Reads a password from stdin and prints its scrypt hash as JSON.
 const crypto = require("crypto");
 const chunks = [];
 process.stdin.on("data", (c) => chunks.push(c));

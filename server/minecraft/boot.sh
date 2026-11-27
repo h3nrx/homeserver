@@ -1,6 +1,6 @@
 #!/bin/bash
-# Laeuft bei jedem Containerstart vor Minecraft.
-# Liegt eine Reset-Anforderung vom Admin-Panel vor, wird die Welt neu erstellt.
+# Runs before Minecraft every time the container starts.
+# If the admin panel asked for a reset, the world is created anew.
 set -u
 SEED_FORMAT='^[A-Za-z0-9_-]{1,32}$'
 marker=/control/reset-seed
@@ -10,11 +10,11 @@ if [ -f "$marker" ]; then
   seed="$(head -c 64 "$marker" | tr -d '\r\n')"
   rm -f "$marker"
   if [[ "$seed" =~ $SEED_FORMAT ]]; then
-    echo "[boot] Erstelle neue Welt mit Seed $seed"
+    echo "[boot] Creating a new world with seed $seed"
     rm -rf -- /data/world /data/world_nether /data/world_the_end /data/plugins/Essentials/userdata
     printf '%s\n' "$seed" > "$current.tmp" && mv -f "$current.tmp" "$current"
   else
-    echo "[boot] Ungueltiger Seed, Reset wird ignoriert"
+    echo "[boot] Invalid seed, ignoring the reset"
   fi
 fi
 

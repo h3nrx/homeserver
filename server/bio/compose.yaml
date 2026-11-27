@@ -14,7 +14,7 @@ services:
       - /var/run
       - /tmp
     ports:
-      # Nur lokal erreichbar. Ins Internet kommt die Seite ueber Tailscale Funnel.
+      # Only reachable locally. The site gets onto the internet through Tailscale Funnel.
       - "127.0.0.1:8080:80"
     volumes:
       - ./site:/usr/share/nginx/html:ro

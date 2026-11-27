@@ -1,29 +1,31 @@
 # Homeserver
 
-Ein alter Laptop wird zum eigenen Server: Website, Admin-Panel, Minecraft, Discord-Bots, File Host und mehr. Alles läuft zu Hause und ist trotzdem von überall erreichbar, über Tailscale Funnel, ohne Portfreigabe am Router.
+Turn an old laptop into your own server: website, admin panel, Minecraft, Discord bots, a file host and more. Everything runs at home and is still reachable from anywhere through Tailscale Funnel, with no port forwarding on your router.
 
-## Was drin ist
+The admin panel speaks English and German (switch under Design → Language).
 
-- **Startseite** mit Discord-Status, Uhr, Wallpapers und einem kleinen „Desktop“.
-- **Admin-Panel** (als App installierbar):
-  - System: CPU, RAM, Speicher, Netzwerk, Temperatur.
-  - Minecraft (Paper): Start und Stopp, Konsole, Spieler, Whitelist, Plugins von Modrinth.
-  - Discord-Bots: Python-Bots hochladen, starten, Logs ansehen.
-  - File Host: Ordner, Verschieben per Drag & Drop, Speicherlimit, Upload vom iPhone/iPad per Kurzbefehl.
-  - Clips, Pastebin, Musik-Radio, Datei-Konverter, Downloader, Discord-Kompressor, Hintergrund-Entferner, Upscaler.
-  - Training, Wallet (nur Beobachten, keine privaten Schlüssel), Design und Power.
-  - **Updates per Knopfdruck**.
-- **Sicherheit**: Firewall, gehärtetes SSH, automatische Sicherheits-Updates. Die Container laufen read-only und ohne Sonderrechte.
+## What's inside
 
-## Voraussetzungen
+- **Start page** with your Discord status, a clock and a calm animated background.
+- **Admin panel** (installable as an app):
+  - System: CPU, RAM, disk, network, temperature, blocked logins, a status screen on the laptop's own display.
+  - Minecraft (Paper): start and stop, console, players, whitelist, plugins from Modrinth, world reset.
+  - Discord bots: upload Python bots, start them, read their logs.
+  - File Host: folders, drag & drop, storage limit, private files with share links, uploads from iPhone/iPad via a shortcut.
+  - Clips, Pastebin, Music Radio, File Converter, Downloader, Discord Compressor, Background Remover, Image Upscaler.
+  - Training, Grade calculator, Wallet (watch-only, no private keys), Camera (off by default), Design and Power.
+  - **One-click updates** for the server software and for Ubuntu.
+- **Security**: firewall, hardened SSH, automatic security updates, login lockout after 3 wrong passwords. The containers run read-only and without extra privileges.
 
-- Ein Laptop oder PC mit **Ubuntu Server 26.04 LTS** (frisch installiert, mit Internet).
-- Ein kostenloses **Tailscale**-Konto (für die öffentliche Adresse).
-- Ca. 20 GB freier Speicher, besser mehr.
+## What you need
 
-## Installieren
+- A laptop or PC with **Ubuntu Server 26.04 LTS** (freshly installed, connected to the internet).
+- A free **Tailscale** account (for the public address).
+- About 20 GB of free disk space, more is better.
 
-Auf dem Server, als normaler Benutzer (nicht `sudo`):
+## Install
+
+On the server, as your normal user (not with `sudo`):
 
 ```bash
 curl -fsSL https://github.com/h3nrx/homeserver/archive/refs/heads/main.tar.gz | tar -xz
@@ -31,75 +33,93 @@ cd homeserver-main
 bash install.sh
 ```
 
-Der Installer fragt nach einem Namen für deinen Server, optional nach deiner Discord-User-ID und nach dem Ubuntu-Passwort. Am Ende zeigt er die Adressen von Website und Admin-Panel. Danach einmal `sudo reboot`.
+The installer asks for:
 
-Du kannst `install.sh` jederzeit nochmal starten. Passwörter, Daten und Einstellungen bleiben erhalten.
+1. your Ubuntu password (for `sudo`; you won't see it while typing),
+2. a name for your server (shown on the website and in the panel),
+3. optionally your Discord user ID (for the status on the start page),
+4. a new admin password for the panel (at least 12 characters, pick a different one than your Ubuntu password),
+5. a Tailscale sign-in: open the link it shows and sign in. If it says "Funnel is not enabled", open that link too and click Enable.
+
+At the end it shows the addresses of your website and admin panel. Then restart once:
+
+```bash
+sudo reboot
+```
+
+You can run `install.sh` again at any time. Passwords, data and settings are kept.
+
+### Optional extras
+
+- **Minecraft from outside your home** (without opening ports): create a free [playit.gg](https://playit.gg) agent, then run `bash ~/playit/set-secret.sh` and paste its secret key.
+- **Wallet** (watch-only Bitcoin + Litecoin): run `python3 ~/wallet/new-wallet.py` directly at the laptop. It shows 12 words once – write them on paper. Only the public addresses are saved.
+- **Camera tab**: `touch ~/panel-agent/camera.on`, then reload the admin. Off again: `rm ~/panel-agent/camera.on`.
 
 ## Updates
 
-Im Admin-Panel auf **Updates** gehen und dann auf **Install** klicken. Das Update läuft so ab:
+In the admin panel go to **Updates** and click **Install**. An update works like this:
 
-1. Die neue Version wird von GitHub geladen und geprüft.
-2. Alle Dateien, die ersetzt werden, werden gesichert.
-3. Nur die Teile, die sich geändert haben, werden neu gestartet.
-4. Antwortet das Panel danach nicht, wird **automatisch zurückgesetzt**.
+1. The new version is downloaded from GitHub and checked.
+2. Every file that gets replaced is backed up.
+3. Only the parts that changed are restarted.
+4. If the panel doesn't answer afterwards, everything is **rolled back automatically**.
 
-Ein Update fasst nie an: `.env`-Dateien, das Admin-Passwort, hochgeladene Dateien, Bots, Musik, die Minecraft-Welt und eigene Logos.
+An update never touches: `.env` files, the admin password, uploaded files, bots, music, the Minecraft world and your own logos.
 
-Per Hand geht es auch so (`v1.2.3` steht für die gewünschte Version):
+You can also do it by hand (`v1.2.3` stands for the version you want):
 
 ```bash
 sudo bash /usr/local/lib/homeserver/update.sh v1.2.3
 ```
 
-Das Log liegt unter `/var/lib/homeserver/update.log`.
+The log is at `/var/lib/homeserver/update.log`.
 
-### Server, die noch mit dem alten ZIP-Kit eingerichtet wurden
+### Servers that were set up with the old ZIP kit
 
-Einmal umstellen, danach gibt es den Update-Knopf:
+Switch over once, then you get the update button:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/h3nrx/homeserver/main/bootstrap.sh -o bootstrap.sh
 bash bootstrap.sh
 ```
 
-Das Skript liest Name, Logo, Discord-ID und Adresse aus deinen jetzigen Dateien, zeigt sie dir zur Kontrolle und installiert dann die neueste Version.
+The script reads name, logo, Discord ID and address from your current files, shows them to you to check and then installs the newest version.
 
-## Eigene Einstellungen
+## Your own settings
 
-Alles, was nur zu deinem Server gehört, steht in `/etc/homeserver/config.env`:
+Everything that belongs only to your server is in `/etc/homeserver/config.env`:
 
-| Eintrag | Bedeutung |
+| Key | Meaning |
 | --- | --- |
-| `BRAND` | Name auf Website und Panel |
-| `SLUG` | Kurzname ohne Sonderzeichen (für interne Namen) |
-| `ICON` | Logo-Präfix: Bilder heißen `<ICON>-logo-64.png`, `-192`, `-512`, `<ICON>-app-192.png`, `-512`, `<ICON>-apple-touch.png` |
-| `PUBLIC_URL` | Öffentliche Adresse (wird vom Installer gesetzt) |
-| `DISCORD_ID` | Discord-User-ID für den Status auf der Startseite (leer = aus) |
-| `MC_MEMORY` | RAM für Minecraft, z. B. `4G` |
-| `REPO` | Woher Updates kommen |
+| `BRAND` | Name on the website and in the panel |
+| `SLUG` | Short name without special characters (for internal names) |
+| `ICON` | Logo prefix: the pictures are called `<ICON>-logo-64.png`, `-192`, `-512`, `<ICON>-app-192.png`, `-512`, `<ICON>-apple-touch.png` |
+| `PUBLIC_URL` | Public address (set by the installer) |
+| `DISCORD_ID` | Discord user ID for the status on the start page (empty = off) |
+| `MC_MEMORY` | RAM for Minecraft, e.g. `4G` |
+| `REPO` | Where updates come from |
 
-**Eigenes Logo:** PNGs mit den Namen oben nach `~/bio/site/img/` legen und `ICON` anpassen. Danach das Update einmal per Hand mit der aktuellen Version ausführen (siehe oben), damit die neuen Namen überall eingetragen werden. Updates überschreiben deine Logos nie.
+**Your own logo:** put PNGs with the names above into `~/bio/site/img/` and change `ICON`. Then run the update once by hand with the current version (see above), so the new names get filled in everywhere. Updates never overwrite your logos.
 
-## Aufbau
+## Layout
 
 ```
-install.sh       Erstinstallation
-update.sh        Updater (wird nach /usr/local/lib/homeserver kopiert)
-bootstrap.sh     Umstieg fuer aeltere Kit-Installationen
+install.sh       first install
+update.sh        updater (copied to /usr/local/lib/homeserver)
+bootstrap.sh     switch-over for older kit installs
 server/
-  bio/           Website, Admin-Panel (Node), nginx, Media-Dienst (Python)
-  panel-agent/   kleiner Root-Helfer fuer systemd, Statistiken, Updates
-  minecraft/     Paper-Server (Docker)
-  playit/        optionaler Tunnel fuer Minecraft
-  wallet/        Offline-Wallet-Generator (Seed nur auf Papier)
-  systemd/       Dienste
+  bio/           website, admin panel (Node), nginx, media service (Python)
+  panel-agent/   small root helper for systemd, stats, updates, the laptop screen
+  minecraft/     Paper server (Docker)
+  playit/        optional tunnel for Minecraft
+  wallet/        offline wallet generator (seed on paper only)
+  systemd/       services
 ```
 
-Platzhalter wie `__BRAND__` oder `__HOME__` in `server/` werden beim Installieren und bei jedem Update aus `config.env` ausgefüllt.
+Placeholders like `__BRAND__` or `__HOME__` in `server/` are filled in from `config.env` during the install and every update.
 
-## Neue Version veröffentlichen (für Maintainer)
+## Publishing a new version (for maintainers)
 
-1. Änderungen in `server/` machen und testen.
-2. `VERSION` hochzählen und `CHANGELOG.md` ergänzen.
-3. Commit + Tag `vX.Y.Z` + GitHub-Release mit kurzen Release-Notes. Die Notes erscheinen im Panel.
+1. Make and test your changes in `server/`.
+2. Bump `VERSION` and add to `CHANGELOG.md`.
+3. Commit + tag `vX.Y.Z` + a GitHub release with short release notes. The notes show up in the panel: write them in English and put a German version inside `<details><summary>Deutsch</summary> … </details>` – German admins see that part.

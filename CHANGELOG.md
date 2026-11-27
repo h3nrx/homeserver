@@ -1,246 +1,255 @@
 # Changelog
 
+## 1.7.13
+
+Everything in English.
+
+- README, install and update scripts, the changelog and all release notes are now in English, so anyone can set up their own server.
+- The install guide in the README now lists every question the installer asks, plus the optional extras (playit, wallet, camera).
+- Release notes now come in English and German. The admin shows the language you picked.
+- Error messages from updates still show up in German when the admin is set to German.
+
 ## 1.7.12
 
-Notenrechner mit Schulnoten.
+Grade calculator with school grades.
 
-- Der Gesamtdurchschnitt und jedes Fach zeigen jetzt zusätzlich die Note von 1 bis 6, mit Kommastellen.
-- Umrechnung: Note = (17 − Punkte) ÷ 3. Also 15 Punkte = 0,67, 14 Punkte = 1,0, 13 Punkte = 1,33 und so weiter.
+- The overall average and every subject now also show the grade from 1 to 6, with decimals.
+- Conversion: grade = (17 − points) ÷ 3. So 15 points = 0.67, 14 points = 1.0, 13 points = 1.33 and so on.
 
 ## 1.7.11
 
-Notenrechner.
+Grade calculator.
 
-- Neues Panel „Notenrechner“ für das Thüringer Oberstufensystem (Notenpunkte 1–15).
-- Fächer legst du selbst an, benennst sie um oder löschst sie. Am Anfang ist die Liste leer.
-- Oben steht ein großer Kreis mit deinem Gesamtdurchschnitt. Er rechnet sich bei jeder Änderung sofort neu.
-- Mit einem Klick auf ein Fach trägst du Noten ein. Jede Note bekommt eine Überschrift, zum Beispiel „Liegestütze“, und ist entweder eine normale Leistung oder eine Kursarbeit.
-- Gewichtung: Normale Leistungen zählen 2/3, die Kursarbeit 1/3. Die Rechnung steht offen auf der Fach-Seite.
-- Noten lassen sich antippen, ändern und löschen. Auch auf der Startseite gibt es eine eigene Kachel dafür.
+- New panel "Grade calculator" for the Thuringian upper-school system (points 1–15).
+- You add, rename and delete your subjects yourself. The list starts out empty.
+- At the top, a big circle shows your overall average. It updates right away with every change.
+- Click a subject to enter grades. Every grade gets a title, e.g. "Push-ups", and is either a normal grade or a course exam.
+- Weighting: normal grades count 2/3, the course exam 1/3. The calculation is shown openly on the subject page.
+- Grades can be tapped, changed and deleted. There's also a tile for it on the start page.
 
 ## 1.7.10
 
-Neue Designs.
+New designs.
 
-- Sechs neue Designs: Höhenlinien, Graphit, Glut, Terminal, Tiefsee und Dämmerung. Jedes hat eigene Farben, eine eigene Schrift und einen ruhigen Hintergrund, keine Fotos mehr.
-- Kacheln sind jetzt klar und ruhig statt milchig verschwommen.
-- Die Design-Seite zeigt eine Live-Vorschau: mit der Maus auf ein Design zeigen, um es anzusehen, und klicken, um es zu übernehmen.
-- Akzentfarbe, Schrift und Ecken liegen eingeklappt unter „Feinschliff“. Die Sprache bleibt immer sichtbar.
-- Alte Designs werden automatisch auf das passende neue umgestellt.
+- Six new designs: Contour, Graphite, Ember, Terminal, Deep sea and Dusk. Each has its own colours, its own font and a calm background, no more photos.
+- Tiles are now clear and calm instead of milky and blurred.
+- The Design page shows a live preview: point at a design to see it, click to use it.
+- Accent colour, font and corners sit collapsed under "Fine-tune". The language stays visible at all times.
+- Old designs are switched to the matching new one automatically.
 
 ## 1.7.9
 
-Laptop-Bildschirm in deiner Sprache.
+Laptop screen in your language.
 
-- Der Laptop-Bildschirm zeigt alles auf Deutsch oder Englisch, je nachdem, welche Sprache zuletzt im Admin gewählt wurde.
-- Design: Der Höhenlinien-Hintergrund bleibt jetzt auch gespeichert, wenn er zu einem anderen Design gewählt wird.
+- The laptop screen shows everything in German or English, depending on the language last picked in the admin.
+- Design: the Contour background now also stays saved when it's picked for another design.
 
 ## 1.7.8
 
-Laptop-Bildschirm in Farbe.
+Laptop screen in colour.
 
-- Eigene, weiche Farben statt der grellen Standardfarben der Konsole.
-- Feine farbige Balken für CPU, RAM und Speicher. Sie werden gelb und rot, wenn es eng wird.
-- Grüne, gelbe und rote Punkte für Minecraft, Website und Ubuntu.
-- Neu: aktuelle Download- und Upload-Geschwindigkeit unten.
+- Its own soft colours instead of the console's harsh default colours.
+- Thin coloured bars for CPU, RAM and disk. They turn yellow and red when things get tight.
+- Green, yellow and red dots for Minecraft, website and Ubuntu.
+- New: current download and upload speed at the bottom.
 
 ## 1.7.7
 
-Neues Design und Status auf dem Laptop-Bildschirm.
+New design and a status on the laptop screen.
 
-- Admin: neues Design „Höhenlinien“ im Look der Startseite: schwarz, schlicht, mit langsam wandernden Linien. Einschalten unter Design.
-- Laptop-Bildschirm: Unter System → Laptop-Bildschirm lässt sich ein Status-Bildschirm einschalten. Der Laptop zeigt dann statt der Anmeldung Uhrzeit, CPU, RAM, Speicher, Minecraft, Website, Ubuntu-Updates und die Verbindung. Die Anmeldung gibt es weiter mit Strg+Alt+F2.
+- Admin: new design "Contour" in the look of the start page: black, clean, with slowly drifting lines. Turn it on under Design.
+- Laptop screen: under System → Laptop screen you can turn on a status screen. Instead of the login, the laptop then shows the time, CPU, RAM, disk, Minecraft, website, Ubuntu updates and the connection. The login is still there with Ctrl+Alt+F2.
 
 ## 1.7.6
 
-Ubuntu-Updates: gestaffelte Updates.
+Ubuntu updates: phased updates.
 
-- Updates, die Ubuntu nur schrittweise verteilt und für diesen Laptop noch nicht freigegeben hat, werden nicht mehr als installierbar angezeigt. Sie kommen von selbst, sobald Ubuntu sie freigibt.
+- Updates that Ubuntu rolls out step by step and hasn't released for this laptop yet are no longer shown as installable. They come by themselves as soon as Ubuntu releases them.
 
 ## 1.7.5
 
-Ladebalken und schnellere Updates.
+Progress bar and faster updates.
 
-- File Downloader: Der Ladebalken zeigt jetzt den echten Fortschritt, statt von 0 auf 100 % zu springen. Video und Ton zählen zusammen als ein Balken.
-- Updates bauen den Media-Dienst nur noch neu, wenn es wirklich nötig ist. Das spart mehrere Minuten und viel CPU.
+- File Downloader: the progress bar now shows the real progress instead of jumping from 0 to 100 %. Video and audio count together as one bar.
+- Updates only rebuild the media service when it's really needed. That saves several minutes and a lot of CPU.
 
 ## 1.7.4
 
-Sicherheitsupdate.
+Security update.
 
-- Der Server schreibt weniger Protokolle mit, vorhandene Protokolle der Website und des Media-Dienstes werden beim Update geleert.
-- Gelöschtes ist sofort und vollständig weg.
+- The server keeps fewer logs, and existing logs of the website and the media service are cleared during the update.
+- Deleted things are gone right away and completely.
 
 ## 1.7.3
 
-Ubuntu-Updates im Admin.
+Ubuntu updates in the admin.
 
-- Die Updates-Seite zeigt, ob es Updates für Ubuntu gibt, wie viele davon für die Sicherheit sind und ob ein Neustart nötig ist.
-- Installieren per Button. Der Laptop startet dabei nicht von selbst neu.
+- The Updates page shows whether there are updates for Ubuntu, how many of them are for security and whether a restart is needed.
+- Install with a button. The laptop doesn't restart by itself.
 
 ## 1.7.2
 
-Mehr Schutz beim Anmelden.
+More protection when signing in.
 
-- Nach 3 falschen Passwörtern wird die IP-Adresse 24 Stunden gesperrt. Das gilt auch nach einem Neustart.
-- Beim Anmelden steht, wie viele Versuche noch übrig sind.
-- Gesperrte Adressen stehen in der Systemübersicht und lassen sich dort entsperren.
+- After 3 wrong passwords the IP address is blocked for 24 hours. This also holds after a restart.
+- Signing in shows how many tries are left.
+- Blocked addresses are listed in the System overview and can be unblocked there.
 
 ## 1.7.1
 
-Zeitraffer im Kamera-Tab.
+Time-lapse in the Camera tab.
 
-- Aufnehmen drücken, Stopp drücken, fertig ist das Video. Oder vorher eine Dauer einstellen (1 Stunde bis 7 Tage oder eigene Zeit), dann stoppt es von selbst.
-- Länge des fertigen Videos wählbar: 15 Sekunden bis 2 Minuten.
-- Braucht wenig Platz: Es wird nur alle paar Sekunden ein Bild gemacht, und die Einzelbilder werden gelöscht, sobald das Video fertig ist.
-- Läuft auf dem Server weiter, auch wenn die Seite zu ist, und macht nach einem Neustart oder Update weiter.
-- Videos direkt ansehen, herunterladen und löschen. Nur im Admin sichtbar.
+- Press record, press stop, and the video is done. Or set a duration first (1 hour to 7 days or your own time), then it stops by itself.
+- Length of the finished video selectable: 15 seconds to 2 minutes.
+- Needs little space: a picture is only taken every few seconds, and the single pictures are deleted as soon as the video is done.
+- Keeps running on the server even when the page is closed, and carries on after a restart or update.
+- Watch, download and delete videos right there. Only visible in the admin.
 
 ## 1.7.0
 
-Neue öffentliche Startseite: Höhenlinien statt Laptop.
+New public start page: contour lines instead of the laptop.
 
-- Feine Linien auf Schwarz, die ganz langsam wandern und sich bei Maus oder Finger leicht heben.
-- Name unten links, Uhrzeit unten rechts. Spielt jemand Minecraft, steht das klein darüber.
-- Neues Vorschaubild, wenn man den Link verschickt.
+- Thin lines on black that drift very slowly and lift a little under the mouse or finger.
+- Name at the bottom left, time at the bottom right. If someone plays Minecraft, that's shown small above it.
+- New preview picture when you send the link.
 
 ## 1.6.0
 
-Neue Bento-Startseite im Admin, und Panels lassen sich endlich richtig anordnen.
+New bento start page in the admin, and panels can finally be arranged properly.
 
-- Startseite: alles in einem Raster. Uhr und Auslastung sind eine große Kachel, der Rest ist klein oder breit.
-- Anordnen neu gebaut: Die Kachel folgt der Maus oder dem Finger, die anderen gleiten zur Seite, und eine gestrichelte Lücke zeigt, wo sie landet.
-- Am Handy: kurz halten zum Verschieben, wischen zum Scrollen. Am Griff geht es sofort.
-- Neuer Knopf für die Größe: klein, breit oder groß.
-- Jede Änderung wird sofort gespeichert. Alte Anordnungen und ausgeblendete Panels bleiben erhalten.
-- Updates-Seite: Versionsnummer steht nicht mehr doppelt im Titel.
+- Start page: everything in one grid. Clock and load are one big tile, the rest is small or wide.
+- Arranging rebuilt: the tile follows the mouse or finger, the others slide aside, and a dashed gap shows where it lands.
+- On the phone: hold briefly to move, swipe to scroll. The handle works right away.
+- New button for the size: small, wide or large.
+- Every change is saved right away. Old arrangements and hidden panels are kept.
+- Updates page: the version number no longer appears twice in the title.
 
 ## 1.5.4
 
-UI ein wenig aufgeräumt.
+A little UI cleanup.
 
-- Startseite: Die Beschriftung passt jetzt in die Ringe (RAM, Speicher).
+- Start page: the labels now fit inside the rings (RAM, disk).
 
 ## 1.5.3
 
-Updates-Seite aufgeräumt.
+Updates page tidied up.
 
-- Eine ruhige, zentrierte Seite statt drei Kästen: Status, Installieren, Neuerungen.
-- Neuerungen werden als richtige Liste angezeigt.
-- Quelle und Zugangsschlüssel stehen klein darunter.
+- One calm, centred page instead of three boxes: status, install, what's new.
+- What's new is shown as a proper list.
+- Source and access key are shown small below.
 
 ## 1.5.2
 
-Kamera-Kachel auf der Startseite.
+Camera tile on the start page.
 
-- Die Kamera hat jetzt eine eigene Kachel mit der Anzahl gefundener Kameras. Sie lässt sich wie die anderen verschieben und ausblenden.
-- Auf Servern ohne eingeschaltete Kamera bleibt sie unsichtbar.
+- The camera now has its own tile with the number of cameras found. It can be moved and hidden like the others.
+- On servers without the camera turned on, it stays invisible.
 
 ## 1.5.1
 
-Kamera: 30 Bilder/s auch bei wenig Licht.
+Camera: 30 fps even in low light.
 
-- Manche Kameras halbieren bei wenig Licht ihre Bilder/s, weil die Automatik länger belichtet. Das wird jetzt erkannt und die Belichtung nach ein paar Sekunden festgestellt (das Bild wird etwas dunkler).
-- Alle 5 Minuten wird das Licht kurz neu geprüft, dabei kann es 3–4 Sekunden ruckeln.
+- Some cameras halve their frame rate in low light because the auto exposure takes longer. This is now detected, and the exposure gets locked after a few seconds (the picture gets a little darker).
+- Every 5 minutes the light is checked again briefly, which can stutter for 3–4 seconds.
 
 ## 1.5.0
 
-Kamera flüssig: bis zu 30 Bilder/s.
+Smooth camera: up to 30 fps.
 
-- Die Kamera kommt jetzt als Video (H.264) statt als Einzelbilder. Das braucht etwa ein Zehntel der Daten und läuft auch über die Website flüssig.
-- 30 statt 15 Bilder/s. Auflösung und Bilder/s stehen oben links.
-- Ist die Verbindung zu langsam, werden Bilder übersprungen, statt immer weiter hinterherzuhängen.
-- Alte Browser ohne Video-Decoder bekommen weiter Einzelbilder.
-- Beim Installieren startet der Media-Dienst neu, das Radio setzt kurz aus.
+- The camera now comes as video (H.264) instead of single pictures. That needs about a tenth of the data and also runs smoothly over the website.
+- 30 instead of 15 fps. Resolution and fps are shown at the top left.
+- If the connection is too slow, frames are skipped instead of falling further and further behind.
+- Old browsers without a video decoder keep getting single pictures.
+- Installing restarts the media service, so the radio pauses briefly.
 
 ## 1.4.1
 
-Bessere Kamera-Qualität.
+Better camera quality.
 
-- Die Kamera startet jetzt in HD (1280×720) statt 640×480. Oben links steht die Auflösung.
-- Für 50-Hz-Licht eingestellt: weniger Flimmern und Streifen.
-- Neu: „Bild“ mit Reglern für Helligkeit, Kontrast, Sättigung, Schärfe, Gegenlicht und Zoom, je nach Kamera. Die Werte merkt sich der Browser pro Kamera.
+- The camera now starts in HD (1280×720) instead of 640×480. The resolution is shown at the top left.
+- Set for 50 Hz light: less flicker and banding.
+- New: "Picture" with sliders for brightness, contrast, saturation, sharpness, backlight and zoom, depending on the camera. The browser remembers the values per camera.
 
 ## 1.4.0
 
-Kurzbefehl-Uploads sind jetzt privat, und Updates klappen auch aus einem privaten Repository.
+Shortcut uploads are private now, and updates also work from a private repository.
 
-- Was per iPhone-Kurzbefehl hochgeladen wird, bekommt keinen Link mehr. Einen Link gibt es erst, wenn man ihn im File Host erstellt. Der Kurzbefehl bekommt nur noch den Dateinamen zurück. Links von früher bleiben, bis man sie entfernt.
-- Updates: Unter „Privates Repository“ lässt sich ein GitHub-Schlüssel eintragen, der nur lesen darf. Er liegt nur für root lesbar auf dem Server.
+- What you upload with the iPhone shortcut no longer gets a link. A link only exists once you create it in the File Host. The shortcut only gets the file name back. Links from before stay until you remove them.
+- Updates: under "Private repository" you can enter a read-only GitHub key. It's stored on the server, readable by root only.
 
 ## 1.3.0
 
-Neu: Kamera-Tab (standardmäßig aus).
+New: Camera tab (off by default).
 
-- Nach Kameras suchen (eingebaut oder per USB am Server), eine auswählen und live ansehen. Normal oder HD, mit Vollbild.
-- Die Kamera ist nur an, solange jemand zuschaut. Nichts wird aufgenommen, kein Ton. Nur mit Admin-Login.
-- Der Tab erscheint nur auf Servern, auf denen er eingeschaltet wird: `touch ~/panel-agent/camera.on`. Wieder aus: `rm ~/panel-agent/camera.on`. Danach den Admin neu laden.
-- File Host: weitere englische Texte übersetzt.
+- Search for cameras (built in or USB on the server), pick one and watch it live. Normal or HD, with full screen.
+- The camera is only on while someone is watching. Nothing is recorded, no sound. Admin login only.
+- The tab only shows up on servers where it's turned on: `touch ~/panel-agent/camera.on`. Off again: `rm ~/panel-agent/camera.on`. Then reload the admin.
+- File Host: more English texts translated.
 
 ## 1.2.2
 
-Fix: Word-Dateien vom iPhone-Kurzbefehl wurden zu .txt.
+Fix: Word files from the iPhone shortcut became .txt.
 
-- Der Server schaut jetzt zuerst in die Datei und erkennt Word, Excel, PowerPoint (auch alte Formate), OpenDocument, RTF, PDF, Bilder und Videos. Die Typangabe vom Handy zählt nur noch, wenn der Inhalt unklar ist.
-- Falsch als .txt gespeicherte Kurzbefehl-Uploads werden beim Öffnen vom File Host umbenannt. Ihr Link ändert sich dadurch. Hat das iPhone nur reinen Text geschickt, ist das Original nicht dabei: dann neu hochladen.
-- Namen wie „Bericht v1.2“ bekommen jetzt auch eine Endung.
-- Echte .json-Dateien lassen sich wieder hochladen (ging seit 1.2.1 nicht), und bestimmte Textdateien werden nicht mehr für MP3 gehalten.
+- The server now looks into the file first and recognises Word, Excel, PowerPoint (old formats too), OpenDocument, RTF, PDF, pictures and videos. The type the phone sends only counts when the content is unclear.
+- Shortcut uploads wrongly saved as .txt are renamed when the File Host opens. Their link changes because of that. If the iPhone only sent plain text, the original isn't included: upload it again then.
+- Names like "Report v1.2" now get an extension too.
+- Real .json files can be uploaded again (broken since 1.2.1), and certain text files are no longer mistaken for MP3.
 
 ## 1.2.1
 
-Fix für Uploads vom iPhone.
+Fix for uploads from the iPhone.
 
-- Fotos und Videos vom iPhone-Kurzbefehl kamen ohne Dateiendung an (z. B. „IMG_1234“) und ließen sich weder ansehen noch richtig herunterladen. Jetzt erkennt der Server, was es wirklich ist, und hängt .jpg, .heic, .mov, .mp4 usw. an.
-- Schon hochgeladene Dateien ohne Endung werden beim Öffnen vom File Host automatisch repariert.
-- iPhone-Fotos im HEIC-Format bekommen jetzt eine Vorschau, auch am PC.
-- Ist im Kurzbefehl beim Haupttext „Formular“ oder „JSON“ eingestellt statt „Datei“, kommt jetzt eine klare Fehlermeldung.
+- Photos and videos from the iPhone shortcut arrived without a file extension (e.g. "IMG_1234") and could neither be viewed nor downloaded properly. Now the server recognises what they really are and adds .jpg, .heic, .mov, .mp4 etc.
+- Already uploaded files without an extension are repaired automatically when the File Host opens.
+- iPhone photos in HEIC format now get a preview, also on the PC.
+- If the shortcut's request body is set to "Form" or "JSON" instead of "File", there's now a clear error message.
 
 ## 1.2.0
 
-Dateien sind privat, Links gibt's nur auf Wunsch.
+Files are private, links only when you want them.
 
-- Neue Dateien im File Host sind privat. Ohne Anmeldung kommt niemand dran.
-- „Link erstellen“ macht eine Datei teilbar und kopiert den Link. „Nicht mehr teilen“ macht sie wieder privat, der Link geht dann nicht mehr.
-- Geteilte Dateien sind in der Liste mit „geteilt“ markiert.
-- Antippen öffnet die Datei direkt im File Explorer: Bilder, Videos, Musik, Textdateien sowie PowerPoint, Word, Excel und PDF. Mit den Pfeilen geht's zur nächsten Datei.
-- Dateien von vor diesem Update bleiben geteilt, damit schon verschickte Links weiter funktionieren. Bei Bedarf einfach „Nicht mehr teilen“ drücken.
-- Uploads per iPhone-Kurzbefehl bekommen weiterhin sofort einen Link.
+- New files in the File Host are private. Nobody gets at them without signing in.
+- "Create link" makes a file shareable and copies the link. "Stop sharing" makes it private again, and the link stops working.
+- Shared files are marked "shared" in the list.
+- Tapping opens the file right in the file explorer: pictures, videos, music, text files and PowerPoint, Word, Excel and PDF. The arrows go to the next file.
+- Files from before this update stay shared so links you already sent keep working. If needed, just press "Stop sharing".
+- Uploads with the iPhone shortcut still get a link right away.
 
 ## 1.1.2
 
-Vorschau für PowerPoint, Word, Excel und PDF.
+Previews for PowerPoint, Word, Excel and PDF.
 
-- Geteilte PowerPoint-Dateien (pptx, ppt, odp …) zeigen jetzt alle Folien als Bilder, direkt im Browser, auch am Handy.
-- Genauso für Word (docx, doc, odt, rtf), Excel (xlsx, xls, ods) und PDF.
-- Beim ersten Öffnen wird die Vorschau kurz erstellt (meist ein paar Sekunden). Danach ist sie sofort da.
-- Gezeigt werden bis zu 40 Seiten.
-- Hinweis: Dieses Update baut den Media-Dienst neu (LibreOffice kommt dazu). Das Installieren dauert deshalb einmalig etwa 5 Minuten und braucht rund 600 MB mehr Speicher.
+- Shared PowerPoint files (pptx, ppt, odp …) now show all slides as pictures, right in the browser, on the phone too.
+- The same for Word (docx, doc, odt, rtf), Excel (xlsx, xls, ods) and PDF.
+- The first time it opens, the preview is made briefly (usually a few seconds). After that it's there right away.
+- Up to 40 pages are shown.
+- Note: this update rebuilds the media service (LibreOffice is added). Installing therefore takes about 5 minutes once and needs around 600 MB more disk space.
 
 ## 1.1.1
 
-Geteilte Dateien erst ansehen, dann herunterladen.
+View shared files first, then download.
 
-- Wer einen File-Host-Link im Browser öffnet (z. B. am Handy), sieht jetzt zuerst eine Vorschau statt eines sofortigen Downloads: Bilder, Videos, Musik und Textdateien direkt auf der Seite, alles andere mit Name und Größe.
-- Darunter ein großer „Herunterladen“-Knopf. PDFs lassen sich zusätzlich im Browser öffnen.
-- Gilt auch für Links, die schon verschickt wurden.
-- Discord-Vorschauen und eingebettete Bilder funktionieren wie vorher.
-- Die Seite ist auf Deutsch, wenn der Browser Deutsch eingestellt hat.
+- Opening a File Host link in the browser (e.g. on the phone) now shows a preview first instead of downloading right away: pictures, videos, music and text files right on the page, everything else with name and size.
+- Below it, a big "Download" button. PDFs can also be opened in the browser.
+- This also applies to links that were already sent.
+- Discord previews and embedded pictures work like before.
+- The page is in German if the browser is set to German.
 
 ## 1.1.0
 
-Admin-Panel jetzt auch auf Deutsch.
+Admin panel now in German too.
 
-- Sprache umschaltbar: Deutsch oder Englisch, unter Design → Sprache oder direkt unter dem Login.
-- Die Sprache wird pro Gerät gespeichert. Ohne Auswahl richtet sie sich nach der Sprache des Browsers.
-- Datum, Uhrzeit und „vor 5 Minuten“ passen sich der Sprache an.
-- Plugin-Beschreibungen von Modrinth bleiben im Original.
+- Switchable language: German or English, under Design → Language or right below the login.
+- The language is saved per device. Without a choice it follows the browser's language.
+- Date, time and "5 minutes ago" adapt to the language.
+- Plugin descriptions from Modrinth stay in their original language.
 
 ## 1.0.0
 
-Erste Version auf GitHub.
+First version on GitHub.
 
-- Updates per Knopfdruck: Admin-Panel → Updates. Mit Sicherung und automatischem Zurücksetzen.
-- File Host als richtiger Explorer: Ordner, Unterordner, Verschieben (auch per Drag & Drop), Mehrfachauswahl, gut am Handy bedienbar.
-- Ergebnisse von Converter, Downloader, Compressor, Background Remover und Upscaler landen automatisch in eigenen Ordnern im File Host.
-- Speicherlimit einstellbar, mit automatischer Erkennung des Maximums.
-- Upload vom iPhone/iPad per Kurzbefehl mit eigenem Upload-Schlüssel.
+- One-click updates: admin panel → Updates. With a backup and automatic rollback.
+- File Host as a real explorer: folders, subfolders, moving (drag & drop too), multi-select, easy to use on the phone.
+- Results of the converter, downloader, compressor, background remover and upscaler land automatically in their own folders in the File Host.
+- Adjustable storage limit, with automatic detection of the maximum.
+- Upload from iPhone/iPad with a shortcut and its own upload key.
