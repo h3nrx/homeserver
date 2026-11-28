@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.24
+
+Plugins from CurseForge.
+
+- Minecraft plugins: besides Modrinth you can now get plugins from CurseForge (switch at the top of "Get plugins"). Search by name; only plugins made for your Minecraft version can be installed, and every download is checked. Updates are found like with Modrinth. No account or key needed.
+- Laptop screen: the temperature now has a grey "temp" label, like cpu, ram and disk.
+
 ## 1.7.23
 
 Restart and shut down from the laptop.

@@ -631,7 +631,7 @@ async function botRoutes(req, res, p, m, url) {
 }
 
 /* ============================ Plugin shop ============================ */
-// Paper plugins from Modrinth. Jars go straight into the server's plugins
+// Paper plugins from Modrinth and CurseForge. Jars go straight into the server's plugins
 // folder (mounted at /mc/plugins); Paper loads them on the next (re)start.
 // Jars that were added by hand are recognised by their hash, so they get
 // names, icons and update checks too.
@@ -645,6 +645,11 @@ const PLUGIN_LOADERS = ["paper", "spigot", "bukkit", "purpur"];
 const MR_CATS = new Set(["adventure", "cursed", "decoration", "economy", "equipment", "food", "game-mechanics", "library", "magic",
   "management", "minigame", "mobs", "optimization", "social", "storage", "technology", "transportation", "utility", "worldgen"]);
 const MAX_PLUGIN_BYTES = 100 * 1024 * 1024;
+// CurseForge's Bukkit plugin section has an open API (no key, no account):
+// a name search and the files of each project, with the Minecraft version and an MD5.
+const CF = "https://servermods.forgesvc.net/servermods";
+const CF_ID = /^cf:(\d{1,9})$/;
+const CF_SLUG = /^[a-z0-9][a-z0-9_-]{0,99}$/;
 let mcVersionCache = process.env.MC_VERSION || "26.3";
 
 function mcVersion() {
@@ -684,6 +689,40 @@ async function mr(p, { method = "GET", body, cache = 0, timeout = 10000 } = {}) 
   }
   return data;
 }
+
+const cfCache = new Map();
+async function cf(p, cache = 0) {
+  const hit = cache && cfCache.get(p);
+  if (hit && hit.until > Date.now()) return hit.data;
+  let r;
+  try { r = await fetch(CF + p, { headers: { "User-Agent": MR_UA }, signal: AbortSignal.timeout(15000) }); }
+  catch { fail(502, "CurseForge isn't reachable right now. Try again in a moment."); }
+  if (!r.ok) fail(502, `CurseForge answered with an error (${r.status}).`);
+  const data = await r.json();
+  if (!Array.isArray(data)) fail(502, "CurseForge sent something unexpected.");
+  if (cache) {
+    if (cfCache.size > 200) cfCache.clear();
+    cfCache.set(p, { until: Date.now() + cache, data });
+  }
+  return data;
+}
+const cfDate = (f) => +((String(f.dateReleased).match(/\d+/) || [0])[0]);
+const cfFits = (f, version) => f.gameVersion === version || version.startsWith(`${f.gameVersion}.`);
+// project id -> its newest jar for this Minecraft version (releases before betas), for many projects in one call
+async function cfNewest(ids, version, cache = 10 * 60e3) {
+  const out = new Map();
+  for (let i = 0; i < ids.length; i += 40) {
+    const files = await cf(`/files?projectIds=${ids.slice(i, i + 40).join(",")}`, cache);
+    for (const f of files) {
+      if (!/\.jar$/i.test(f.fileName || "") || !cfFits(f, version)) continue;
+      const cur = out.get(f.projectId), rank = (x) => [x.releaseType === "release" ? 1 : 0, cfDate(x)];
+      if (!cur || rank(f)[0] > rank(cur)[0] || (rank(f)[0] === rank(cur)[0] && rank(f)[1] > rank(cur)[1])) out.set(f.projectId, f);
+    }
+  }
+  return out;
+}
+const cfNum = (name) => (String(name).match(/(\d+(?:\.\d+)+(?:[-+][\w.]+)?)\.jar$/i) || [])[1] || String(name).replace(/\.jar$/i, "");
+const cfFileId = (f) => ((String(f.downloadUrl).match(/\/files\/(\d+)\/(\d+)\//) || []).slice(1).join("")) || String(f.downloadUrl);
 
 let pluginLock = Promise.resolve();
 function withPlugins(fn) {
@@ -725,7 +764,7 @@ async function pluginsList(lockedMeta) {
     const full = path.join(PLUGINS_DIR, file);
     const st = await fsp.stat(full);
     const known = meta.files[file] || {};
-    return { file, size: st.size, added: known.installed || st.mtimeMs, shop: !!meta.files[file],
+    return { file, size: st.size, added: known.installed || st.mtimeMs, shop: !!meta.files[file], source: known.source || "modrinth",
              title: known.title || "", icon: known.icon || "", slug: known.slug || "", project: known.project || "",
              number: known.number || "", sha1: await jarSha1(full) };
   }));
@@ -742,11 +781,21 @@ async function pluginsList(lockedMeta) {
       const byId = Object.fromEntries(projects.map((x) => [x.id, x]));
       for (const i of items) {
         const v = known[i.sha1];
-        if (!v) continue;
+        if (!v || i.source === "curseforge") continue;     // installed from CurseForge: stays a CurseForge plugin
         const pr = byId[v.project_id] || {};
         Object.assign(i, { project: v.project_id, number: v.version_number, title: pr.title || i.title, icon: pr.icon_url || i.icon, slug: pr.slug || i.slug });
         const up = latest[i.sha1];
         if (up && up.id !== v.id && Date.parse(up.date_published) > Date.parse(v.date_published)) i.update = up.version_number;
+      }
+    } catch { online = false; }
+  }
+  const cfItems = items.filter((i) => CF_ID.test(i.project) && i.source === "curseforge");
+  if (cfItems.length) {
+    try {
+      const newest = await cfNewest(cfItems.map((i) => +i.project.slice(3)), version);
+      for (const i of cfItems) {
+        const f = newest.get(+i.project.slice(3));
+        if (f && cfFileId(f) !== (meta.files[i.file] || {}).fileId) i.update = cfNum(f.fileName);
       }
     } catch { online = false; }
   }
@@ -812,6 +861,37 @@ async function installPlugin(projectId, ctx, depth = 0) {
   ctx.done.push(depth ? `${project.title} (needed)` : project.title);
 }
 
+async function fetchCfJar(f, dest) {
+  const host = (u) => { try { const x = new URL(u); return x.protocol === "https:" && /(^|\.)forgecdn\.net$/.test(x.hostname); } catch { return false; } };
+  if (!host(f.downloadUrl)) fail(502, "CurseForge pointed to an unexpected download location.");
+  let r;
+  try { r = await fetch(f.downloadUrl, { headers: { "User-Agent": MR_UA }, signal: AbortSignal.timeout(120000) }); }
+  catch { fail(502, "The download from CurseForge failed. Try again."); }
+  if (!r.ok || !host(r.url)) fail(502, "The download from CurseForge failed. Try again.");
+  const buf = Buffer.from(await r.arrayBuffer());
+  if (buf.length > MAX_PLUGIN_BYTES) fail(413, "That plugin is over 100 MB.");
+  if (f.md5 && crypto.createHash("md5").update(buf).digest("hex") !== String(f.md5).toLowerCase()) fail(502, "The download was damaged. Try again.");
+  await fsp.writeFile(`${dest}.part`, buf, { mode: 0o664 });
+  await fsp.rename(`${dest}.part`, dest);
+}
+async function installCfPlugin(project, info, ctx) {
+  const id = +project.slice(3);
+  const f = (await cfNewest([id], ctx.version, 0)).get(id);
+  if (!f) fail(409, `${info.title} doesn't have a version for Minecraft ${ctx.version} yet.`);
+  const old = ctx.current.filter((x) => x.project === project).map((x) => x.file);
+  let file = jarName(f.fileName);
+  if (ctx.current.some((x) => x.file === file && x.project !== project)) file = file.replace(/\.jar$/i, `-cf${id}.jar`);
+  await fetchCfJar(f, path.join(PLUGINS_DIR, file));
+  for (const o of old) {
+    if (o === file) continue;
+    await fsp.rm(path.join(PLUGINS_DIR, o), { force: true });
+    delete ctx.meta.files[o];
+  }
+  ctx.meta.files[file] = { project, source: "curseforge", fileId: cfFileId(f), number: cfNum(f.fileName),
+                           title: info.title, icon: "", slug: info.slug, installed: Date.now() };
+  ctx.done.push(info.title);
+}
+
 async function pluginRoutes(req, res, p, m, url) {
   if (p === "/api/plugins" && m === "GET") return send(res, 200, await pluginsList());
   if (p === "/api/plugins/search" && m === "GET") {
@@ -819,6 +899,19 @@ async function pluginRoutes(req, res, p, m, url) {
     const cat = String(url.searchParams.get("cat") || "");
     const offset = Math.max(0, Math.min(1000, +(url.searchParams.get("offset") || 0) || 0));
     const version = mcVersion();
+    if (url.searchParams.get("source") === "curseforge") {
+      if (!q) return send(res, 200, { version, total: 0, offset: 0, hits: [], needsQuery: true });
+      const found = (await cf(`/projects?search=${encodeURIComponent(q)}`, 5 * 60e3)).filter((x) => x && Number.isInteger(x.id)).slice(0, 96);
+      const newest = await cfNewest(found.map((x) => x.id), version);
+      const all = url.searchParams.get("all") === "1";
+      const list = found.map((x) => {
+        const f = newest.get(x.id);
+        return { id: `cf:${x.id}`, slug: CF_SLUG.test(x.slug || "") ? x.slug : "", title: String(x.name || x.slug || x.id).slice(0, 100), author: "",
+                 description: f ? f.name || f.fileName : "", downloads: null, icon: "", updated: f ? cfDate(f) : 0, categories: [],
+                 fits: !!f, source: "curseforge" };
+      }).filter((h) => all || h.fits).sort((a, b) => b.fits - a.fits);
+      return send(res, 200, { version, total: list.length, offset, hits: list.slice(offset, offset + 24) });
+    }
     const facets = [["project_type:plugin"], PLUGIN_LOADERS.map((l) => `categories:${l}`)];
     if (url.searchParams.get("all") !== "1") facets.push([`versions:${version}`]);
     if (MR_CATS.has(cat)) facets.push([`categories:${cat}`]);
@@ -837,17 +930,21 @@ async function pluginRoutes(req, res, p, m, url) {
     const result = await withPlugins(async (meta, save) => {
       const list = await pluginsList(meta);
       let project = String(b.project || "");
+      let info = { title: String(b.title || "").replace(/[\x00-\x1f\x7f<>]/g, "").trim().slice(0, 100), slug: CF_SLUG.test(b.slug || "") ? b.slug : "" };
       if (p.endsWith("/update")) {
         const it = list.plugins.find((x) => x.file === b.file);
         if (!it || !it.project) fail(404, "That plugin can't be updated from here.");
         project = it.project;
+        info = { title: it.title, slug: it.slug };
       }
-      if (!MR_ID.test(project)) fail(400, "Unknown plugin.");
+      const fromCf = CF_ID.test(project);
+      if (!MR_ID.test(project) && !fromCf) fail(400, "Unknown plugin.");
+      if (fromCf && !info.title) info.title = "Plugin";
       if (p.endsWith("/install") && list.plugins.some((x) => x.project === project)) fail(409, "That plugin is already installed.");
       const ctx = { version: list.version, meta, current: list.plugins, seen: new Set(), done: [],
                     have: new Set(list.plugins.map((x) => x.project).filter(Boolean)) };
       ctx.have.delete(project);
-      try { await installPlugin(project, ctx); }
+      try { await (fromCf ? installCfPlugin(project, info, ctx) : installPlugin(project, ctx)); }
       finally { if (ctx.done.length) { meta.pending = true; await save(); } }
       console.log(`plugins: ${p.endsWith("/update") ? "updated" : "installed"} ${ctx.done.join(", ")}`);
       return { ok: true, installed: ctx.done };

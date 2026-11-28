@@ -80,7 +80,7 @@ TEXT = {
         "days": ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"],
         "months": ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"],
         "date": "{day}, {d}. {month}", "dh": "{d} Tagen, {h} Std", "d1": "1 Tag, {h} Std", "hm": "{h} Std {m} Min", "up": "an seit {t}",
-        "cpu": "cpu %", "temp": "°C", "ram": "ram %", "disk": "speicher %", "loading": "Werte werden geladen…",
+        "cpu": "cpu %", "temp": "temp °C", "ram": "ram %", "disk": "speicher %", "loading": "Werte werden geladen…",
         "web": "website", "web_down": "website nicht erreichbar", "s_ram": "ram", "s_disk": "speicher",
         "mc_off": "minecraft aus", "mc_0": "minecraft · niemand spielt", "mc_1": "minecraft · 1 spielt", "mc_n": "minecraft · {n} spielen",
         "updating": "wird aktualisiert…", "reboot": "Neustart nötig", "current": "ubuntu aktuell",
@@ -90,7 +90,7 @@ TEXT = {
         "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
         "months": ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
         "date": "{day}, {d} {month}", "dh": "{d} days, {h} h", "d1": "1 day, {h} h", "hm": "{h} h {m} min", "up": "up {t}",
-        "cpu": "cpu %", "temp": "°C", "ram": "ram %", "disk": "disk %", "loading": "Loading…",
+        "cpu": "cpu %", "temp": "temp °C", "ram": "ram %", "disk": "disk %", "loading": "Loading…",
         "web": "website", "web_down": "website not reachable", "s_ram": "ram", "s_disk": "disk",
         "mc_off": "minecraft off", "mc_0": "minecraft · nobody playing", "mc_1": "minecraft · 1 playing", "mc_n": "minecraft · {n} playing",
         "updating": "updating…", "reboot": "restart needed", "current": "ubuntu up to date",
@@ -303,7 +303,7 @@ def frame(cols: int, lines: int) -> list[str]:
         # the name big, in the accent colour; the numbers small in one line under it
         g.letters((cols - letters_width(BRAND, px)) // 2, top + 1, BRAND, ACC, px)
         if fresh:
-            small = [("cpu ", DIM), (f"{cells[0][0]} %", cells[0][2]), ("     ", FG), (f"{cells[1][0]} °C", cells[1][2]),
+            small = [("cpu ", DIM), (f"{cells[0][0]} %", cells[0][2]), ("     ", FG), ("temp ", DIM), (f"{cells[1][0]} °C", cells[1][2]),
                      ("     ", FG), (T["s_ram"] + " ", DIM), (f"{cells[2][0]} %", cells[2][2]),
                      ("     ", FG), (T["s_disk"] + " ", DIM), (f"{cells[3][0]} %", cells[3][2])]
             g.row(top + 8, small)
